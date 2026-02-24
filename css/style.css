@@ -1,0 +1,490 @@
+/* 麻将游戏样式 */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Microsoft YaHei', Arial, sans-serif;
+    background: #0a5c36;
+    color: white;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.game-container {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+    background: url('../assets/table-bg.jpg') center/cover;
+}
+
+/* 游戏信息栏 */
+.game-info {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    display: flex;
+    justify-content: space-between;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 10px 20px;
+    border-radius: 10px;
+    backdrop-filter: blur(5px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.player-info, .round-info {
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* AI玩家区域 */
+.ai-player {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    z-index: 5;
+    transition: all 0.3s ease;
+}
+
+.ai-player.thinking {
+    animation: thinking 1s ease-in-out infinite;
+}
+
+.ai-top {
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    flex-direction: column;
+}
+
+.ai-left {
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.ai-right {
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.ai-hand {
+    display: flex;
+    gap: 5px;
+}
+
+.ai-top .ai-hand {
+    margin-bottom: 10px;
+}
+
+.ai-left .ai-hand, .ai-right .ai-hand {
+    flex-direction: column;
+}
+
+.ai-name {
+    font-weight: bold;
+    text-shadow: 1px 1px 2px black;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 5px 10px;
+    border-radius: 5px;
+    backdrop-filter: blur(5px);
+}
+
+/* 游戏桌面 */
+.game-table {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px;
+    height: 300px;
+    background: rgba(139, 69, 19, 0.3);
+    border-radius: 10px;
+    border: 3px solid #8b4513;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+/* 已打出的牌区域 */
+.discarded-tiles {
+    width: 100%;
+    height: 100%;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.discarded-row {
+    display: flex;
+    justify-content: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+/* 玩家区域 */
+.player-area {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 1200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+/* 玩家手牌 */
+.player-hand {
+    display: flex;
+    gap: 5px;
+    justify-content: center;
+    flex-wrap: wrap;
+    max-width: 100%;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+}
+
+/* 麻将牌样式 */
+.tile {
+    width: 50px;
+    height: 70px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    position: relative;
+    border-radius: 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    transform-origin: center;
+}
+
+.tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 5px;
+    user-select: none;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.tile:hover {
+    transform: translateY(-10px) scale(1.05);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+    z-index: 3;
+}
+
+.tile.selected {
+    transform: translateY(-15px) scale(1.1);
+    box-shadow: 0 0 20px gold;
+    z-index: 2;
+}
+
+.tile-back img {
+    opacity: 0.8;
+}
+
+/* 添加触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
+    .tile {
+        width: 55px;
+        height: 77px;
+    }
+
+    .tile:active {
+        transform: translateY(-10px) scale(1.05);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+        z-index: 3;
+    }
+
+    .tile.selected {
+        transform: translateY(-15px) scale(1.1);
+        box-shadow: 0 0 20px gold;
+        z-index: 2;
+    }
+}
+
+/* 玩家操作按钮 */
+.player-actions {
+    display: none;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+    backdrop-filter: blur(5px);
+    animation: fadeIn 0.3s ease-out;
+}
+
+.action-btn {
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    background: linear-gradient(145deg, #4a752c, #3a5f22);
+    color: white;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.action-btn:hover:not(:disabled) {
+    background: linear-gradient(145deg, #5a8c34, #4a752c);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+.action-btn:disabled {
+    background: linear-gradient(145deg, #666, #555);
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* 按钮按下效果 */
+.action-btn:active::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: ripple 0.6s linear;
+}
+
+@keyframes ripple {
+    to {
+        width: 200px;
+        height: 200px;
+        opacity: 0;
+    }
+}
+
+/* 消息提示 */
+.message {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.85);
+    color: white;
+    padding: 25px 50px;
+    border-radius: 15px;
+    font-size: 24px;
+    font-weight: bold;
+    z-index: 100;
+    animation: fadeInOut 3s ease-in-out;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+    min-width: 300px;
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+    20% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+    80% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-20px); }
+}
+
+/* 游戏提示 */
+.game-tip {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-size: 16px;
+    z-index: 100;
+    animation: slideInDown 0.3s ease-out;
+    backdrop-filter: blur(5px);
+}
+
+@keyframes slideInDown {
+    from {
+        transform: translate(-50%, -100%);
+        opacity: 0;
+    }
+    to {
+        transform: translate(-50%, 0);
+        opacity: 1;
+    }
+}
+
+/* 游戏结束画面 */
+.game-over {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    animation: fadeIn 0.5s ease-out;
+    backdrop-filter: blur(5px);
+}
+
+.game-over-content {
+    background: linear-gradient(145deg, #0a5c36, #084a2c);
+    padding: 50px;
+    border-radius: 20px;
+    text-align: center;
+    box-shadow: 0 0 50px rgba(0, 0, 0, 0.7);
+    border: 2px solid rgba(255, 215, 0, 0.3);
+    max-width: 90%;
+    width: 500px;
+    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.game-over-content h2 {
+    font-size: 42px;
+    margin-bottom: 25px;
+    color: gold;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.game-over-content p {
+    font-size: 28px;
+    margin-bottom: 35px;
+    color: white;
+}
+
+.game-over-content button {
+    padding: 15px 40px;
+    font-size: 22px;
+    background: linear-gradient(145deg, #4a752c, #3a5f22);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.game-over-content button:hover {
+    background: linear-gradient(145deg, #5a8c34, #4a752c);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.game-over-content button:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .tile {
+        width: 40px;
+        height: 56px;
+    }
+
+    .game-table {
+        width: 90%;
+        height: 200px;
+    }
+
+    .ai-player {
+        /* 在移动设备上调整AI玩家的位置和大小而不是隐藏 */
+    }
+
+    .ai-top {
+        top: 60px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .ai-left, .ai-right {
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .ai-left {
+        left: 10px;
+    }
+
+    .ai-right {
+        right: 10px;
+    }
+
+    .player-hand {
+        gap: 3px;
+    }
+
+    .player-info, .round-info {
+        font-size: 14px;
+    }
+
+    .action-btn {
+        padding: 10px 15px;
+        font-size: 14px;
+    }
+
+    /* 在小屏幕上调整AI手牌显示 */
+    .ai-hand {
+        gap: 3px;
+    }
+
+    /* 在极小屏幕上进一步调整 */
+    @media (max-width: 480px) {
+        .tile {
+            width: 35px;
+            height: 49px;
+        }
+
+        .game-table {
+            width: 95%;
+            height: 150px;
+        }
+
+        .ai-top {
+            top: 50px;
+        }
+
+        .discarded-row {
+            gap: 3px;
+        }
+    }
+}
