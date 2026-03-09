@@ -11,7 +11,10 @@ class MahjongGame {
         this.gameOver = false; // 游戏是否结束
         this.dealer = 0; // 庄家索引
         this.lastDiscardedTile = null; // 最后打出的牌
+        this.lastDiscardPlayer = null; // 最后出牌的玩家索引
         this.pendingActions = []; // 等待响应的操作
+        this.isAnimating = false; // 并发控制标志
+        this.chiCombinations = []; // 存储吃牌的可选组合
     }
 
     // 初始化游戏
@@ -69,8 +72,9 @@ class MahjongGame {
         if (discardedTile) {
             this.discardedTiles.push(discardedTile);
             this.lastDiscardedTile = discardedTile;
+            this.lastDiscardPlayer = playerIndex;
 
-            // 检查其他玩家是否可以碰、杠、胡
+            // 检查其他玩家是否可以碰、杠、胡、吃
             this.checkOtherPlayersActions(playerIndex, discardedTile);
 
             return discardedTile;
@@ -78,11 +82,12 @@ class MahjongGame {
         return null; // 打牌失败
     }
 
-    // 检查其他玩家是否可以碰、杠、胡
+    // 检查其他玩家是否可以碰、杠、胡、吃
     checkOtherPlayersActions(playerIndex, discardedTile) {
         this.pendingActions = [];
+        this.chiCombinations = [];
 
-        // 检查胡牌
+        // 检查胡牌（最高优先级）
         const winActions = this.checkWin(playerIndex, discardedTile);
         this.pendingActions.push(...winActions);
 
@@ -94,17 +99,27 @@ class MahjongGame {
         const pengActions = this.checkPeng(playerIndex, discardedTile);
         this.pendingActions.push(...pengActions);
 
+        // 检查吃牌（只有下家可以吃，且无人碰/杠/胡时才能吃）
+        // 如果已经有胡/杠/碰的操作，则不吃
+        const hasHigherPriority = this.pendingActions.length > 0;
+        if (!hasHigherPriority) {
+            const chiActions = this.checkChi(playerIndex, discardedTile);
+            this.pendingActions.push(...chiActions);
+        }
+
         // 返回等待的操作（不自动轮换玩家，由UI层处理）
         return this.pendingActions;
     }
 
     // 处理等待的操作
-    handlePendingAction(action, playerIndex, tile) {
+    handlePendingAction(action, playerIndex, tile, combination = null, gangType = null) {
         switch (action) {
+            case 'chi':
+                return this.chiTile(playerIndex, tile.suit, tile.value, combination);
             case 'peng':
                 return this.pengTile(playerIndex, tile.suit, tile.value);
             case 'gang':
-                return this.gangTile(playerIndex, tile.suit, tile.value);
+                return this.gangTile(playerIndex, tile.suit, tile.value, gangType || 'minggang');
             case 'hu':
             case 'zimo':
                 // 胡牌逻辑
@@ -141,10 +156,41 @@ class MahjongGame {
                 results.push({
                     playerIndex: i,
                     action: 'gang',
+                    gangType: 'minggang',
                     tile: discardedTile
                 });
             }
         }
+        return results;
+    }
+
+    // 检查当前玩家是否可以自杠（暗杠或补杠）
+    checkSelfGang(playerIndex) {
+        const results = [];
+        const player = this.players[playerIndex];
+
+        // 检查暗杠
+        const anGangTiles = player.getAnGangTiles();
+        anGangTiles.forEach(tile => {
+            results.push({
+                playerIndex: playerIndex,
+                action: 'gang',
+                gangType: 'angang',
+                tile: tile
+            });
+        });
+
+        // 检查补杠
+        const buGangTiles = player.getBuGangTiles();
+        buGangTiles.forEach(tile => {
+            results.push({
+                playerIndex: playerIndex,
+                action: 'gang',
+                gangType: 'bugang',
+                tile: tile
+            });
+        });
+
         return results;
     }
 
@@ -170,6 +216,28 @@ class MahjongGame {
         return results;
     }
 
+    // 检查是否有玩家可以吃牌（只有下家可以吃）
+    checkChi(playerIndex, discardedTile) {
+        const results = [];
+        // 下家索引 = (playerIndex + 1) % 4
+        const nextPlayerIndex = (playerIndex + 1) % 4;
+
+        // 检查下家是否可以吃牌
+        if (this.players[nextPlayerIndex].canChi(discardedTile.suit, discardedTile.value)) {
+            const combinations = this.players[nextPlayerIndex].getChiCombinations(discardedTile.suit, discardedTile.value);
+            // 存储吃牌组合供后续选择
+            this.chiCombinations = combinations;
+
+            results.push({
+                playerIndex: nextPlayerIndex,
+                action: 'chi',
+                tile: discardedTile,
+                combinations: combinations
+            });
+        }
+        return results;
+    }
+
     // 碰牌
     pengTile(playerIndex, suit, value) {
         const result = this.players[playerIndex].pengTile(suit, value);
@@ -182,23 +250,69 @@ class MahjongGame {
     }
 
     // 杠牌
-    gangTile(playerIndex, suit, value) {
-        const result = this.players[playerIndex].gangTile(suit, value);
+    gangTile(playerIndex, suit, value, gangType = 'minggang') {
+        let result = false;
+
+        switch (gangType) {
+            case 'angang':
+                result = this.players[playerIndex].doAnGang(suit, value);
+                break;
+            case 'bugang':
+                result = this.players[playerIndex].doBuGang(suit, value);
+                break;
+            case 'minggang':
+            default:
+                result = this.players[playerIndex].doMingGang(suit, value);
+                break;
+        }
+
         if (result) {
             // 杠牌成功，该玩家再摸一张牌
             const newTile = this.drawTile(playerIndex);
             if (newTile) {
-                console.log(`玩家 ${playerIndex} 杠牌成功，摸到新牌: ${newTile.getName()}`);
+                console.log(`玩家 ${playerIndex} ${this.getGangTypeName(gangType)}成功，摸到新牌: ${newTile.getName()}`);
 
                 // 检查是否自摸胡牌
                 if (this.players[playerIndex].canWin()) {
-                    console.log(`玩家 ${playerIndex} 自摸胡牌！`);
-                    this.endGame();
+                    this.pendingActions = [{
+                        playerIndex: playerIndex,
+                        action: 'zimo',
+                        tile: newTile
+                    }];
+                    console.log(`玩家 ${playerIndex} 可以自摸胡牌！`);
+                } else {
+                    // 检查是否可以继续杠
+                    const selfGangActions = this.checkSelfGang(playerIndex);
+                    if (selfGangActions.length > 0) {
+                        this.pendingActions = selfGangActions;
+                        console.log(`玩家 ${playerIndex} 可以继续杠牌！`);
+                    }
                 }
             }
 
             // 该玩家继续出牌
             this.currentPlayer = playerIndex;
+        }
+        return result;
+    }
+
+    // 获取杠牌类型名称
+    getGangTypeName(gangType) {
+        const names = {
+            'angang': '暗杠',
+            'bugang': '补杠',
+            'minggang': '明杠'
+        };
+        return names[gangType] || '杠牌';
+    }
+
+    // 吃牌
+    chiTile(playerIndex, suit, value, combination) {
+        const result = this.players[playerIndex].chiTile(suit, value, combination);
+        if (result) {
+            // 吃牌成功，该玩家成为当前玩家
+            this.currentPlayer = playerIndex;
+            console.log(`玩家 ${playerIndex} 吃牌成功`);
         }
         return result;
     }
@@ -222,7 +336,7 @@ class MahjongGame {
 
         console.log(`玩家 ${this.currentPlayer} 摸牌: ${newTile.getName()}`);
 
-        // 检查自摸胡牌（不自动结束，让UI层处理）
+        // 检查自摸胡牌（最高优先级）
         if (this.checkSelfWin(this.currentPlayer)) {
             this.pendingActions = [{
                 playerIndex: this.currentPlayer,
@@ -230,6 +344,13 @@ class MahjongGame {
                 tile: newTile
             }];
             console.log(`玩家 ${this.currentPlayer} 可以自摸胡牌！`);
+        } else {
+            // 检查是否可以自杠（暗杠或补杠）
+            const selfGangActions = this.checkSelfGang(this.currentPlayer);
+            if (selfGangActions.length > 0) {
+                this.pendingActions = selfGangActions;
+                console.log(`玩家 ${this.currentPlayer} 可以自杠！`);
+            }
         }
 
         return newTile;
@@ -255,14 +376,25 @@ class MahjongGame {
         return this.currentPlayer;
     }
 
+    // 获取庄家
+    getDealer() {
+        return this.dealer;
+    }
+
     // 获取等待的操作
     getPendingActions() {
         return [...this.pendingActions];
     }
 
+    // 获取吃牌组合
+    getChiCombinations() {
+        return [...this.chiCombinations];
+    }
+
     // 清除等待的操作
     clearPendingActions() {
         this.pendingActions = [];
+        this.chiCombinations = [];
     }
 
     // 游戏是否结束

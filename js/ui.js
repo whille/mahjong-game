@@ -12,6 +12,20 @@ class MahjongUI {
         this.gangBtn = document.getElementById('gang-btn');
         this.huBtn = document.getElementById('hu-btn');
         this.passBtn = document.getElementById('pass-btn');
+        this.chiBtn = document.getElementById('chi-btn'); // 吃牌按钮
+        this.difficultySelect = document.getElementById('difficulty-select');
+
+        // 调试面板元素
+        this.debugPanel = document.getElementById('debug-panel');
+        this.debugToggleBtn = document.getElementById('debug-toggle-btn');
+        this.debugGameState = document.getElementById('debug-game-state');
+        this.showAiHandsCheckbox = document.getElementById('show-ai-hands');
+        this.debugNewGameBtn = document.getElementById('debug-new-game');
+        this.debugAutoPlayBtn = document.getElementById('debug-auto-play');
+        this.closeDebugBtn = document.getElementById('close-debug-btn');
+
+        // 调试状态
+        this.showAiHands = false;
 
         // 音频元素
         this.dealSound = document.getElementById('deal-sound');
@@ -35,7 +49,68 @@ class MahjongUI {
             document.querySelector('.discarded-row.bottom-row')
         ];
 
+        // 并发控制
+        this.isAnimating = false;
+        this.actionQueue = [];
+        this.animationLockCount = 0;
+
         this.initEventListeners();
+    }
+
+    // 获取动画状态
+    getIsAnimating() {
+        return this.isAnimating;
+    }
+
+    // 开始动画（锁定UI）
+    beginAnimation() {
+        this.animationLockCount++;
+        this.isAnimating = true;
+        this.updateUICursor();
+    }
+
+    // 结束动画（解锁UI）
+    endAnimation() {
+        this.animationLockCount = Math.max(0, this.animationLockCount - 1);
+        if (this.animationLockCount === 0) {
+            this.isAnimating = false;
+            this.updateUICursor();
+            // 处理队列中的操作
+            this.processActionQueue();
+        }
+    }
+
+    // 更新UI光标状态
+    updateUICursor() {
+        if (this.isAnimating) {
+            this.gameContainer.classList.add('animating');
+        } else {
+            this.gameContainer.classList.remove('animating');
+        }
+    }
+
+    // 将操作加入队列
+    queueAction(action, ...args) {
+        this.actionQueue.push({ action, args });
+    }
+
+    // 处理操作队列
+    processActionQueue() {
+        if (this.actionQueue.length > 0 && !this.isAnimating) {
+            const { action, args } = this.actionQueue.shift();
+            this.handleAction(action, ...args);
+        }
+    }
+
+    // 等待动画完成
+    async waitForAnimation(duration = 300) {
+        return new Promise(resolve => {
+            this.beginAnimation();
+            setTimeout(() => {
+                this.endAnimation();
+                resolve();
+            }, duration);
+        });
     }
 
     // 初始化事件监听器
@@ -53,6 +128,11 @@ class MahjongUI {
         this.gangBtn.addEventListener('click', () => this.handleAction('gang'));
         this.huBtn.addEventListener('click', () => this.handleAction('hu'));
         this.passBtn.addEventListener('click', () => this.handleAction('pass'));
+
+        // 吃牌按钮
+        if (this.chiBtn) {
+            this.chiBtn.addEventListener('click', () => this.handleAction('chi'));
+        }
     }
 
     // 渲染玩家手牌
@@ -74,7 +154,7 @@ class MahjongUI {
     }
 
     // 渲染AI手牌
-    renderAIHands(aiHands) {
+    renderAIHands(aiHands, showCards = false) {
         let hasTiles = false;
         aiHands.forEach((hand, index) => {
             const handElement = this.aiHandElements[index];
@@ -82,13 +162,24 @@ class MahjongUI {
                 handElement.innerHTML = '';
                 const tileCount = hand.getCount();
 
-                // 显示背面朝上的牌
-                for (let i = 0; i < tileCount; i++) {
-                    const tileElement = this.createTileElement(null, true);
-                    // 添加发牌动画类
-                    tileElement.classList.add('animated-deal');
-                    handElement.appendChild(tileElement);
-                    hasTiles = true;
+                // 显示背面朝上的牌或正面（作弊模式）
+                if (showCards) {
+                    // 显示正面
+                    const tiles = hand.getTiles();
+                    tiles.forEach((tile) => {
+                        const tileElement = this.createTileElement(tile, false);
+                        tileElement.classList.add('animated-deal');
+                        handElement.appendChild(tileElement);
+                        hasTiles = true;
+                    });
+                } else {
+                    // 显示背面
+                    for (let i = 0; i < tileCount; i++) {
+                        const tileElement = this.createTileElement(null, true);
+                        tileElement.classList.add('animated-deal');
+                        handElement.appendChild(tileElement);
+                        hasTiles = true;
+                    }
                 }
             }
         });
@@ -155,6 +246,11 @@ class MahjongUI {
 
     // 选择牌（高亮显示）
     selectTile(tileElement) {
+        // 如果正在动画中，忽略点击
+        if (this.isAnimating) {
+            return;
+        }
+
         // 移除其他已选择的牌的高亮
         document.querySelectorAll('.tile.selected').forEach(el => {
             el.classList.remove('selected');
@@ -183,7 +279,12 @@ class MahjongUI {
         this.pengBtn.disabled = !actions.includes('peng');
         this.gangBtn.disabled = !actions.includes('gang');
         this.huBtn.disabled = !actions.includes('hu') && !actions.includes('zimo');
-        this.passBtn.disabled = !actions.includes('pass') && !actions.some(a => ['peng', 'gang', 'hu', 'zimo'].includes(a));
+        this.passBtn.disabled = !actions.includes('pass') && !actions.some(a => ['peng', 'gang', 'hu', 'zimo', 'chi'].includes(a));
+
+        // 吃牌按钮
+        if (this.chiBtn) {
+            this.chiBtn.disabled = !actions.includes('chi');
+        }
 
         // 显示操作按钮区域
         document.querySelector('.player-actions').style.display =
@@ -197,6 +298,11 @@ class MahjongUI {
 
     // 处理操作按钮点击
     handleAction(action) {
+        // 如果正在动画中，将操作加入队列
+        if (this.isAnimating) {
+            this.queueAction(action);
+            return;
+        }
         this.onAction && this.onAction(action);
     }
 
@@ -290,7 +396,13 @@ class MahjongUI {
         if (sound) {
             // 重置音频并播放
             sound.currentTime = 0;
-            sound.play().catch(e => console.log("音频播放失败:", e));
+            sound.play().catch(e => {
+                // 浏览器安全策略：首次需要用户交互才能播放音频
+                // 这是正常行为，不需要警告
+                if (e.name !== 'NotAllowedError') {
+                    console.warn("音频播放失败:", e);
+                }
+            });
         }
     }
 
@@ -329,6 +441,121 @@ class MahjongUI {
     // 设置操作按钮回调
     setOnAction(callback) {
         this.onAction = callback;
+    }
+
+    // 获取当前选择的AI难度
+    getSelectedDifficulty() {
+        return this.difficultySelect ? this.difficultySelect.value : 'medium';
+    }
+
+    // 设置AI难度选择器的值
+    setDifficulty(difficulty) {
+        if (this.difficultySelect) {
+            this.difficultySelect.value = difficulty;
+        }
+    }
+
+    // 设置难度变化回调
+    setOnDifficultyChange(callback) {
+        if (this.difficultySelect) {
+            this.difficultySelect.addEventListener('change', (e) => {
+                callback(e.target.value);
+            });
+        }
+    }
+
+    // 初始化调试面板
+    initDebugPanel() {
+        if (!this.debugToggleBtn) return;
+
+        // 切换调试面板显示
+        this.debugToggleBtn.addEventListener('click', () => {
+            this.toggleDebugPanel();
+        });
+
+        // 关闭调试面板
+        if (this.closeDebugBtn) {
+            this.closeDebugBtn.addEventListener('click', () => {
+                this.hideDebugPanel();
+            });
+        }
+
+        // 显示AI手牌切换
+        if (this.showAiHandsCheckbox) {
+            this.showAiHandsCheckbox.addEventListener('change', (e) => {
+                this.showAiHands = e.target.checked;
+                if (this.onShowAiHandsChange) {
+                    this.onShowAiHandsChange(this.showAiHands);
+                }
+            });
+        }
+    }
+
+    // 切换调试面板
+    toggleDebugPanel() {
+        if (this.debugPanel) {
+            const isVisible = this.debugPanel.style.display !== 'none';
+            this.debugPanel.style.display = isVisible ? 'none' : 'block';
+        }
+    }
+
+    // 显示调试面板
+    showDebugPanel() {
+        if (this.debugPanel) {
+            this.debugPanel.style.display = 'block';
+        }
+    }
+
+    // 隐藏调试面板
+    hideDebugPanel() {
+        if (this.debugPanel) {
+            this.debugPanel.style.display = 'none';
+        }
+    }
+
+    // 更新调试游戏状态
+    updateDebugGameState(game) {
+        if (!this.debugGameState) return;
+
+        const state = {
+            '当前玩家': game.getCurrentPlayer() + 1,
+            '庄家': game.getDealer() + 1,
+            '剩余牌数': game.getRemainingTiles(),
+            '游戏结束': game.isGameOver() ? '是' : '否',
+            '等待操作': game.getPendingActions().map(a =>
+                `玩家${a.playerIndex + 1}:${a.action}`
+            ).join(', ') || '无'
+        };
+
+        let html = '';
+        for (const [key, value] of Object.entries(state)) {
+            html += `<div><strong>${key}:</strong> ${value}</div>`;
+        }
+        this.debugGameState.innerHTML = html;
+    }
+
+    // 设置显示AI手牌回调
+    setOnShowAiHandsChange(callback) {
+        this.onShowAiHandsChange = callback;
+    }
+
+    // 设置新游戏回调
+    setOnDebugNewGame(callback) {
+        if (this.debugNewGameBtn) {
+            this.debugNewGameBtn.addEventListener('click', callback);
+        }
+    }
+
+    // 设置自动出牌回调
+    setOnDebugAutoPlay(callback) {
+        if (this.debugAutoPlayBtn) {
+            this.debugAutoPlayBtn.addEventListener('click', callback);
+        }
+    }
+
+    // 获取是否显示AI手牌
+    getShowAiHands() {
+        return this.showAiHands;
     }
 }
 

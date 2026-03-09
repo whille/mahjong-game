@@ -11,6 +11,14 @@
         <div class="game-info">
             <div class="player-info">玩家: <span id="player-score">0</span></div>
             <div class="round-info">剩余牌数: <span id="remaining-tiles">0</span></div>
+            <div class="difficulty-info">
+                AI难度:
+                <select id="difficulty-select">
+                    <option value="easy">简单</option>
+                    <option value="medium" selected>中等</option>
+                    <option value="hard">困难</option>
+                </select>
+            </div>
         </div>
 
         <!-- AI玩家3 -->
@@ -70,463 +78,50 @@
         <audio id="win-sound" preload="auto">
             <source src="data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV" type="audio/mpeg">
         </audio>
+
+        <!-- 调试面板 -->
+        <div class="debug-panel" id="debug-panel" style="display: none;">
+            <div class="debug-header">
+                <span>调试面板</span>
+                <button id="close-debug-btn">&times;</button>
+            </div>
+            <div class="debug-content">
+                <div class="debug-section">
+                    <h4>游戏状态</h4>
+                    <div id="debug-game-state"></div>
+                </div>
+                <div class="debug-section">
+                    <h4>AI手牌 (作弊模式)</h4>
+                    <div class="debug-toggle">
+                        <label>
+                            <input type="checkbox" id="show-ai-hands">
+                            显示AI手牌
+                        </label>
+                    </div>
+                </div>
+                <div class="debug-section">
+                    <h4>操作</h4>
+                    <button id="debug-new-game" class="debug-btn">新游戏</button>
+                    <button id="debug-auto-play" class="debug-btn">自动出牌</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 调试按钮 -->
+        <button id="debug-toggle-btn" class="debug-toggle-btn" title="调试">🐛</button>
     </div>
 
     <script src="js/mahjong.js"></script>
     <script src="js/game.js"></script>
     <script src="js/ai.js"></script>
     <script src="js/ui.js"></script>
+    <script src="js/controller.js"></script>
     <script>
-        // 游戏初始化
-        let game = null;
-        let ui = null;
-        let ais = [];
-
         // 页面加载完成后初始化游戏
         document.addEventListener('DOMContentLoaded', () => {
-            // 创建游戏实例
-            game = new MahjongGame();
-
-            // 创建UI实例
-            ui = new MahjongUI();
-
-            // 创建AI实例
-            ais = [
-                new MahjongAI(1),
-                new MahjongAI(2),
-                new MahjongAI(3)
-            ];
-
-            // 设置UI回调
-            setupUICallbacks();
-
-            // 初始化游戏
-            initGame();
+            const controller = new GameController();
+            controller.init();
         });
-
-        // 设置UI回调
-        function setupUICallbacks() {
-            // 设置牌被选择的回调
-            ui.setOnTileSelected((suit, value, index) => {
-                console.log(`选择了牌: ${suit}${value} (索引: ${index})`);
-
-                // 显示选择提示
-                ui.showGameTip(`已选择 ${value}${suit}，点击确定出牌`);
-
-                // 如果是当前玩家且没有等待的操作，允许出牌
-                if (game.getCurrentPlayer() === 0 && game.getPendingActions().length === 0) {
-                    // 执行出牌
-                    const discardedTile = game.discardTile(0, suit, value);
-                    if (discardedTile) {
-                        console.log(`玩家出牌: ${discardedTile.getName()}`);
-                        ui.showGameTip(`你打出了 ${discardedTile.getName()}`);
-
-                        // 更新UI
-                        updateUI();
-
-                        // 检查游戏是否结束
-                        if (game.isGameOver()) {
-                            ui.showWinAnimation(); // 显示胡牌动画
-                            ui.showGameOver("游戏结束！");
-                            return;
-                        }
-
-                        // 检查是否有等待的操作
-                        const pendingActions = game.getPendingActions();
-                        if (pendingActions.length > 0) {
-                            // 有其他玩家可以操作，处理AI操作或等待玩家
-                            setTimeout(() => {
-                                handleAIPendingActions();
-                            }, 500);
-                        } else {
-                            // 没有等待的操作，轮到下一位玩家
-                            setTimeout(() => {
-                                nextPlayerTurn();
-                            }, 500);
-                        }
-                    }
-                }
-            });
-
-            // 设置操作按钮回调
-            ui.setOnAction((action) => {
-                console.log(`执行操作: ${action}`);
-
-                if (action === 'pass') {
-                    // 过牌，清除等待的操作，轮到下一位玩家
-                    game.clearPendingActions();
-                    ui.showGameTip("你选择过了");
-
-                    // 更新UI
-                    updateUI();
-
-                    // 轮到下一位玩家
-                    setTimeout(() => {
-                        nextPlayerTurn();
-                    }, 500);
-                } else {
-                    // 处理碰、杠、胡、自摸操作
-                    const pendingActions = game.getPendingActions();
-                    const actionItem = pendingActions.find(item =>
-                        (item.action === action || (action === 'hu' && item.action === 'zimo')) &&
-                        item.playerIndex === 0
-                    );
-
-                    if (actionItem) {
-                        // 确定实际的操作类型
-                        const actualAction = actionItem.action;
-                        const result = game.handlePendingAction(actualAction, 0, actionItem.tile);
-                        if (result) {
-                            console.log(`操作 ${actualAction} 成功`);
-
-                            // 播放相应的音效
-                            if (actualAction === 'peng') {
-                                ui.playSound('peng');
-                            } else if (actualAction === 'gang') {
-                                ui.playSound('gang');
-                            } else if (actualAction === 'hu' || actualAction === 'zimo') {
-                                ui.playSound('hu');
-                            }
-
-                            // 显示相应的动画
-                            if (actualAction === 'peng' || actualAction === 'gang') {
-                                ui.showPengGangAnimation(); // 显示碰/杠动画
-                                ui.showGameTip(actualAction === 'peng' ? "你碰了！" : "你杠了！");
-                            } else if (actualAction === 'hu' || actualAction === 'zimo') {
-                                ui.showWinAnimation(); // 显示胡牌动画
-                                ui.showGameTip(actualAction === 'zimo' ? "你自摸胡牌！" : "你胡牌了！");
-                            }
-
-                            game.clearPendingActions();
-                            updateUI();
-
-                            // 检查游戏是否结束
-                            if (game.isGameOver()) {
-                                ui.showGameOver(actualAction === 'zimo' ? "你自摸胡牌！" : "你胡牌！");
-                                return;
-                            }
-
-                            // 如果是碰或杠，当前玩家继续出牌
-                            if (actualAction === 'peng' || actualAction === 'gang') {
-                                // 不需要额外操作，等待玩家出牌
-                            } else {
-                                // 轮到下一位玩家
-                                setTimeout(() => {
-                                    nextPlayerTurn();
-                                }, 500);
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // AI处理等待的操作
-        function handleAIPendingActions() {
-            if (game.isGameOver()) return;
-
-            const pendingActions = game.getPendingActions();
-
-            if (pendingActions.length === 0) {
-                // 没有等待的操作，轮到下一位玩家
-                setTimeout(() => {
-                    nextPlayerTurn();
-                }, 500);
-                return;
-            }
-
-            // 检查是否有玩家的操作
-            const playerActions = pendingActions.filter(action => action.playerIndex === 0);
-            if (playerActions.length > 0) {
-                // 有玩家操作，等待玩家响应
-                updateUI();
-
-                // 显示提示信息
-                const actions = playerActions.map(action => action.action);
-                const actionNames = {
-                    'peng': '碰',
-                    'gang': '杠',
-                    'hu': '胡'
-                };
-                const actionText = actions.map(action => actionNames[action]).join('、');
-                ui.showGameTip(`你可以${actionText}牌，点击相应按钮操作`);
-
-                return;
-            }
-
-            // 只有AI的操作，自动处理
-            const aiActions = pendingActions.filter(action => action.playerIndex !== 0);
-
-            if (aiActions.length > 0) {
-                // 按优先级选择操作：胡 > 杠 > 碰
-                const priorityOrder = { 'hu': 3, 'gang': 2, 'peng': 1 };
-                aiActions.sort((a, b) => (priorityOrder[b.action] || 0) - (priorityOrder[a.action] || 0));
-
-                const action = aiActions[0];
-                const ai = ais[action.playerIndex - 1];
-
-                // 根据操作类型做决策
-                let shouldPerform = false;
-                const hand = game.players[action.playerIndex];
-
-                switch (action.action) {
-                    case 'peng':
-                        shouldPerform = ai.decidePeng(hand, action.tile);
-                        break;
-                    case 'gang':
-                        shouldPerform = ai.decideGang(hand, action.tile);
-                        break;
-                    case 'hu':
-                        shouldPerform = ai.decideWin(hand, action.tile);
-                        break;
-                }
-
-                if (shouldPerform) {
-                    const result = game.handlePendingAction(action.action, action.playerIndex, action.tile);
-                    if (result) {
-                        console.log(`AI ${action.playerIndex} 执行操作 ${action.action} 成功`);
-
-                        // 播放相应的音效
-                        if (action.action === 'peng') {
-                            ui.playSound('peng');
-                        } else if (action.action === 'gang') {
-                            ui.playSound('gang');
-                        } else if (action.action === 'hu') {
-                            ui.playSound('hu');
-                        }
-
-                        // 显示相应的动画
-                        if (action.action === 'peng' || action.action === 'gang') {
-                            // 可以添加特定的AI动画效果
-                            ui.showGameTip(`AI ${action.playerIndex} ${action.action === 'peng' ? '碰' : '杠'}了你的牌`);
-                        } else if (action.action === 'hu') {
-                            ui.showWinAnimation(); // 显示胡牌动画
-                            ui.showGameTip(`AI ${action.playerIndex} 胡了你的牌！`);
-                        }
-
-                        game.clearPendingActions();
-                        updateUI();
-
-                        // 检查游戏是否结束
-                        if (game.isGameOver()) {
-                            ui.showGameOver(`AI ${action.playerIndex} 胡牌！`);
-                            return;
-                        }
-
-                        // 如果是碰或杠，该AI继续出牌
-                        if (action.action === 'peng' || action.action === 'gang') {
-                            setTimeout(() => {
-                                aiPlayTurn(action.playerIndex);
-                            }, 1000);
-                        } else {
-                            // 轮到下一位玩家
-                            setTimeout(() => {
-                                nextPlayerTurn();
-                            }, 500);
-                        }
-                    }
-                } else {
-                    // AI选择不操作，清除并继续
-                    game.clearPendingActions();
-                    setTimeout(() => {
-                        nextPlayerTurn();
-                    }, 500);
-                }
-            }
-        }
-
-        // AI执行出牌
-        function aiPlayTurn(playerIndex) {
-            if (game.isGameOver()) return;
-
-            const ai = ais[playerIndex - 1];
-            const hand = game.players[playerIndex];
-
-            // 先检查AI是否可以自摸胡牌
-            if (hand.canWin()) {
-                console.log(`AI ${playerIndex} 自摸胡牌！`);
-                ui.playSound('win'); // 播放胡牌音效
-                ui.showWinAnimation(); // 显示胡牌动画
-                ui.showGameTip(`AI ${playerIndex} 自摸胡牌！`);
-                game.endGame();
-                updateUI();
-                ui.showGameOver(`AI ${playerIndex} 自摸胡牌！`);
-                return;
-            }
-
-            // 显示AI思考提示
-            ui.showGameTip(`AI ${playerIndex} 正在思考出牌...`);
-
-            // 延迟执行AI出牌，增加真实感
-            setTimeout(() => {
-                const discardedTile = ai.playDiscard(game);
-
-                if (discardedTile) {
-                    ui.showGameTip(`AI ${playerIndex} 打出了 ${discardedTile.getName()}`);
-
-                    // 更新UI
-                    updateUI();
-
-                    // 检查游戏是否结束
-                    if (game.isGameOver()) {
-                        ui.showGameOver("游戏结束！");
-                        return;
-                    }
-
-                    // 检查是否有等待的操作
-                    const pendingActions = game.getPendingActions();
-                    if (pendingActions.length > 0) {
-                        // 其他AI处理等待的操作
-                        setTimeout(() => {
-                            handleAIPendingActions();
-                        }, 500);
-                    } else {
-                        // 没有等待的操作，轮到下一位玩家
-                        setTimeout(() => {
-                            nextPlayerTurn();
-                        }, 500);
-                    }
-                }
-            }, 1000);
-        }
-
-        // 轮到下一位玩家
-        function nextPlayerTurn() {
-            if (game.isGameOver()) return;
-
-            game.nextPlayer();
-            updateUI();
-
-            // 检查游戏是否结束
-            if (game.isGameOver()) {
-                ui.showGameOver("牌堆已空，游戏结束！");
-                return;
-            }
-
-            // 检查是否有自摸操作（当前玩家可以胡牌）
-            const pendingActions = game.getPendingActions();
-            if (pendingActions.length > 0) {
-                const currentPlayer = game.getCurrentPlayer();
-                const selfWinAction = pendingActions.find(a => a.playerIndex === currentPlayer && a.action === 'zimo');
-
-                if (selfWinAction) {
-                    if (currentPlayer === 0) {
-                        // 玩家可以自摸，显示胡按钮
-                        ui.enableActions(['zimo']);
-                        ui.showGameTip("你可以自摸胡牌！");
-                    } else {
-                        // AI可以自摸
-                        const ai = ais[currentPlayer - 1];
-                        if (ai.decideSelfWin(game.players[currentPlayer])) {
-                            console.log(`AI ${currentPlayer} 自摸胡牌！`);
-                            ui.playSound('win'); // 播放胡牌音效
-                            ui.showWinAnimation(); // 显示胡牌动画
-                            ui.showGameTip(`AI ${currentPlayer} 自摸胡牌！`);
-                            game.handlePendingAction('zimo', currentPlayer, selfWinAction.tile);
-                            game.clearPendingActions();
-                            updateUI();
-                            ui.showGameOver(`AI ${currentPlayer} 自摸胡牌！`);
-                        } else {
-                            // AI选择不自摸（这不应该发生，但作为保险）
-                            game.clearPendingActions();
-                            // AI继续出牌
-                            setTimeout(() => {
-                                aiPlayTurn(currentPlayer);
-                            }, 1000);
-                        }
-                    }
-                    return;
-                }
-            }
-
-            // 如果轮到AI，AI执行出牌
-            const currentPlayer = game.getCurrentPlayer();
-            if (currentPlayer !== 0) {
-                setTimeout(() => {
-                    aiPlayTurn(currentPlayer);
-                }, 1000);
-            }
-        }
-
-        // 初始化游戏
-        function initGame() {
-            // 初始化游戏逻辑
-            game.initGame();
-
-            // 初始化UI
-            updateUI();
-
-            // 显示欢迎消息
-            ui.showGameTip("欢迎来到四川麻将血战到底！");
-            setTimeout(() => {
-                ui.showGameTip("请选择一张牌出牌");
-            }, 2000);
-
-            console.log('游戏初始化完成');
-
-            // 检查庄家是否可以自摸（发牌后就是14张牌的情况）
-            const dealer = game.dealer;
-            if (dealer === 0) {
-                // 玩家是庄家，检查是否可以自摸
-                if (game.players[0].canWin()) {
-                    game.pendingActions = [{
-                        playerIndex: 0,
-                        action: 'zimo',
-                        tile: null
-                    }];
-                    updateUI();
-                }
-                // 等待玩家出牌或自摸
-            } else {
-                // AI是庄家，检查是否可以自摸
-                if (game.players[dealer].canWin()) {
-                    console.log(`AI ${dealer} 天和！`);
-                    ui.playSound('win'); // 播放胡牌音效
-                    ui.showWinAnimation();
-                    game.endGame();
-                    updateUI();
-                    ui.showGameOver(`AI ${dealer} 天和！`);
-                    return;
-                }
-                // AI先出牌
-                setTimeout(() => {
-                    ui.showGameTip(`AI ${dealer} 正在思考...`);
-                    setTimeout(() => {
-                        aiPlayTurn(dealer);
-                    }, 1000);
-                }, 1000);
-            }
-        }
-
-        // 更新UI
-        function updateUI() {
-            if (!game || !ui) return;
-
-            // 渲染玩家手牌
-            ui.renderPlayerHand(game.players[0]);
-
-            // 渲染AI手牌
-            const aiHands = [game.players[1], game.players[2], game.players[3]];
-            ui.renderAIHands(aiHands);
-
-            // 渲染已打出的牌
-            ui.renderDiscardedTiles(game.getDiscardedTiles());
-
-            // 更新游戏信息
-            ui.updateGameInfo(game);
-
-            // 检查是否有等待的操作（只显示玩家的操作按钮）
-            const pendingActions = game.getPendingActions();
-            const playerActions = pendingActions.filter(action => action.playerIndex === 0);
-            if (playerActions.length > 0) {
-                // 启用相应的操作按钮
-                const actions = playerActions.map(action => action.action);
-                ui.enableActions(actions);
-            } else {
-                // 隐藏操作按钮
-                ui.hideActions();
-            }
-        }
     </script>
 </body>
 </html>
