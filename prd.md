@@ -188,3 +188,297 @@
 | 音效 | ✅ | 各种操作音效 |
 | 动画 | ✅ | 发牌、出牌、碰杠胡动画 |
 | 响应式 | ✅ | 支持移动端 |
+
+---
+
+## 10. 技术规范
+
+### 10.1 项目结构
+
+```
+mahjong-game/
+├── index.html              # 游戏主页面
+├── css/
+│   └── style.css           # 所有样式（单文件）
+├── js/
+│   ├── mahjong.js          # 核心数据结构 (Tile, TileSet, Hand)
+│   ├── game.js             # 游戏逻辑 (MahjongGame)
+│   ├── ai.js               # AI决策 (MahjongAI)
+│   ├── ui.js               # UI渲染 (MahjongUI)
+│   └── controller.js       # 控制器 (GameController)
+├── assets/
+│   └── tiles/              # 麻将牌图片
+│       ├── Man1.png ~ Man9.png   # 万子
+│       ├── Sou1.png ~ Sou9.png   # 条子
+│       ├── Pin1.png ~ Pin9.png   # 筒子
+│       └── Back.png             # 牌背
+├── sounds/                 # 音效文件
+├── test/                   # 测试文件
+│   ├── static-test.js
+│   └── e2e-test.js
+└── package.json
+```
+
+### 10.2 模块依赖顺序
+
+JS 文件必须按以下顺序加载：
+
+```
+mahjong.js → game.js → ai.js → ui.js → controller.js
+     │         │         │        │          │
+     │         │         │        │          └── 依赖以上所有
+     │         │         │        └── 独立
+     │         │         └── 依赖 mahjong.js
+     │         └── 依赖 mahjong.js
+     └── 基础模块，无依赖
+```
+
+### 10.3 类 API 规范
+
+#### Tile 类
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `constructor(suit, value)` | suit: '万'\|'条'\|'筒', value: 1-9 | Tile | 创建麻将牌实例 |
+| `getId()` | - | string | 返回唯一标识如 "万5" |
+| `getName()` | - | string | 返回中文名如 "五万" |
+| `getImageName()` | - | string | 返回图片文件名如 "Man5.png" |
+| `clone()` | - | Tile | 返回新实例 |
+
+#### TileSet 类
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `addTile(tile)` | Tile | void | 添加单张牌 |
+| `addTiles(tiles)` | Tile[] | void | 批量添加 |
+| `removeTile(suit, value)` | string, number | Tile \| null | 移除并返回 |
+| `hasTile(suit, value)` | string, number | boolean | 是否存在 |
+| `countTile(suit, value)` | string, number | number | 统计数量 |
+| `getAllTiles()` | - | Tile[] | 返回副本 |
+| `getCount()` | - | number | 牌数 |
+| `shuffle()` | - | void | Fisher-Yates 洗牌 |
+| `sort()` | - | void | 按花色和点数排序 |
+
+#### Hand 类
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `canPeng(suit, value)` | string, number | boolean | 能否碰 |
+| `canMingGang(suit, value)` | string, number | boolean | 能否明杠 |
+| `canAnGang(suit, value)` | string, number | boolean | 能否暗杠 |
+| `canBuGang(suit, value)` | string, number | boolean | 能否补杠 |
+| `getAnGangTiles()` | - | Tile[] | 返回可暗杠的牌 |
+| `getBuGangTiles()` | - | Tile[] | 返回可补杠的牌 |
+| `canWin()` | - | boolean | 胡牌检测 |
+| `calculateWinFan(winType)` | string | object | 计算番型 |
+
+#### MahjongGame 类
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `dealTiles()` | - | void | 发牌 |
+| `drawTile(playerIndex)` | number | Tile \| null | 摸牌 |
+| `discardTile(playerIndex, tile)` | number, Tile | void | 出牌 |
+| `getCurrentPlayer()` | - | number | 当前玩家索引 |
+| `getDealer()` | - | number | 庄家索引 |
+| `getRemainingTiles()` | - | number | 剩余牌数 |
+| `isGameOver()` | - | boolean | 游戏是否结束 |
+| `checkOtherPlayersActions(playerIndex, tile)` | number, Tile | Action[] | 检查其他玩家可执行操作 |
+
+#### MahjongAI 类
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `decideDiscard(hand)` | Hand | Tile | 选择打出的牌 |
+| `decidePeng(hand, tile)` | Hand, Tile | boolean | 是否碰牌 |
+| `decideGang(hand, tile)` | Hand, Tile | boolean | 是否杠牌 |
+| `decideAnGang(hand, tile)` | Hand, Tile | boolean | 是否暗杠 |
+| `decideBuGang(hand, tile)` | Hand, Tile | boolean | 是否补杠 |
+| `decideWin(hand, tile)` | Hand, Tile | boolean | 是否胡牌 |
+| `handlePendingActions(game)` | MahjongGame | Action \| null | 处理待定操作 |
+
+### 10.4 数据结构定义
+
+#### exposed 牌组结构
+```javascript
+{
+    type: 'peng' | 'angang' | 'minggang' | 'bugang' | 'chi',
+    tiles: Tile[]  // 该牌组包含的牌
+}
+```
+
+#### pendingActions 结构
+```javascript
+{
+    playerIndex: number,     // 玩家索引 0-3
+    action: 'peng' | 'gang' | 'hu' | 'zimo' | 'chi',
+    tile: Tile,              // 触发操作的牌
+    gangType?: 'minggang' | 'angang' | 'bugang',  // 杠牌类型
+    combinations?: ChiCombination[]  // 吃牌组合
+}
+```
+
+#### 吃牌组合结构
+```javascript
+{
+    type: 'lower' | 'middle' | 'upper',  // 低吃、中吃、高吃
+    tiles: [Tile, Tile],                 // 手牌中需要的两张
+    discardedTile: Tile                  // 打出的牌
+}
+```
+
+### 10.5 算法规范
+
+#### 胡牌判断算法
+```
+1. 检查牌数是否为 13 或 14 张
+2. 优先检查特殊牌型（七对、龙七对）
+3. 遍历寻找对子作为将牌
+4. 递归检查剩余牌能否组成面子（刻子或顺子）
+```
+
+#### AI 出牌评估算法
+```
+牌价值 = 数量加成 + 顺子潜力 + 边张惩罚
+
+数量加成:
+  - 刻子（3张相同）: +30
+  - 对子（2张相同）: +20
+
+顺子潜力:
+  - 能成顺子（已有相邻牌）: +15
+  - 有潜力（间隔一张）: +8
+
+边张惩罚:
+  - 1号牌: -3
+  - 9号牌: -3
+```
+
+#### AI 难度行为
+| 难度 | 碰牌概率 | 杠牌概率 | 出牌策略 |
+|------|----------|----------|----------|
+| 简单 | 50% | 30% | 随机出牌 |
+| 中等 | 评估后决定 | 评估后决定 | 打低价值牌 |
+| 困难 | 评估后决定 | 考虑风险 | 听牌优先、避免点炮 |
+
+### 10.6 番型计分规则
+
+#### 计分公式
+```
+基础分 = 2^番数
+最终分 = 基础分 × (自摸? 2 : 1) × (庄家? 2 : 1)
+```
+
+#### 番型番数
+| 番型 | 番数 | 说明 |
+|------|------|------|
+| 平胡 | 1 | 基本胡牌（4面子1对子） |
+| 对对胡 | 2 | 四个刻子+一对 |
+| 清一色 | 4 | 单一花色 |
+| 七对 | 2 | 七个对子 |
+| 清七对 | 8 | 清一色七对 |
+| 龙七对 | 4 | 七对中有一杠 |
+| 清龙七对 | 16 | 清一色龙七对 |
+| 十八学士 | 16 | 特殊牌型 |
+| 天胡 | 32 | 庄家起手胡 |
+| 地胡 | 32 | 闲家第一轮胡 |
+| 杠上开花 | +2 | 杠后自摸 |
+| 抢杠胡 | +2 | 胡别人的补杠 |
+| 金钩钓 | +4 | 单吊将牌 |
+| 根 | +1 | 每张多余的相同牌 |
+
+### 10.7 资源文件规范
+
+#### 麻将牌图片
+| 花色 | 文件名 | 说明 |
+|------|--------|------|
+| 万子 | Man1.png ~ Man9.png | 一万到九万 |
+| 条子 | Sou1.png ~ Sou9.png | 一条到九条 |
+| 筒子 | Pin1.png ~ Pin9.png | 一筒到九筒 |
+| 背面 | Back.png | 牌背面 |
+
+#### 音效文件
+| 文件 | 触发时机 |
+|------|----------|
+| deal.mp3 | 发牌、摸牌 |
+| discard.mp3 | 出牌 |
+| peng.mp3 | 碰牌 |
+| gang.mp3 | 杠牌 |
+| hu.mp3 | 胡牌 |
+| win.mp3 | 游戏胜利 |
+
+### 10.8 UI 元素规范
+
+#### HTML 元素 ID
+| ID | 用途 |
+|----|------|
+| `player-hand` | 玩家手牌容器 |
+| `remaining-tiles` | 剩余牌数显示 |
+| `player-score` | 玩家分数 |
+| `peng-btn` | 碰牌按钮 |
+| `gang-btn` | 杠牌按钮 |
+| `hu-btn` | 胡牌按钮 |
+| `pass-btn` | 过牌按钮 |
+| `chi-btn` | 吃牌按钮 |
+| `difficulty-select` | AI难度选择器 |
+| `debug-panel` | 调试面板 |
+| `debug-toggle-btn` | 调试面板开关 |
+| `show-ai-hands` | 显示AI手牌复选框 |
+| `debug-auto-play` | 自动出牌按钮 |
+| `debug-new-game` | 新游戏按钮 |
+
+#### CSS 动画类
+| 类名 | 用途 |
+|------|------|
+| `.selected` | 选中的牌 |
+| `.tile-back` | 牌背面 |
+| `.animated-deal` | 发牌动画 |
+| `.animated-discard` | 出牌动画 |
+| `.animated-penggang` | 碰杠动画 |
+| `.animated-win` | 胡牌动画 |
+| `.thinking` | AI思考状态 |
+
+### 10.9 配置参数
+
+#### GameController 配置
+```javascript
+{
+    aiDelay: 1000,        // AI思考延迟 (ms)
+    actionDelay: 500,     // 操作间延迟 (ms)
+    welcomeDelay: 2000    // 欢迎消息延迟 (ms)
+}
+```
+
+#### 动画时长
+```javascript
+{
+    dealDuration: 300,    // 发牌动画
+    discardDuration: 200, // 出牌动画
+    pengGangDuration: 300,// 碰杠动画
+    winDuration: 500      // 胜利动画
+}
+```
+
+### 10.10 全局导出
+
+模块通过 `window` 对象导出：
+
+```javascript
+// mahjong.js
+window.Tile
+window.TileSet
+window.Hand
+window.createCompleteTileSet
+window.checkWinSimple
+window.FAN_TYPES
+window.calculateFan
+window.calculateFinalScore
+
+// game.js
+window.MahjongGame
+
+// ai.js
+window.MahjongAI
+window.AI_DIFFICULTY
+
+// ui.js
+window.MahjongUI
+
+// controller.js
+window.GameController
+```
