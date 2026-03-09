@@ -1,0 +1,1 @@
+{"name": "mahjong-game", "version": "1.0.0", "description": "四川麻将血战到底 - 单机版网页游戏", "main": "index.html", "scripts": {"test": "node test/static-test.js", "test:e2e": "node test/e2e-test.js", "test:headless": "HEADLESS=true node test/e2e-test.js"}, "devDependencies": {"playwright": "^1.40.0"}, "keywords": ["mahjong", "game", "sichuan"], "author": "", "license": "MIT"}
