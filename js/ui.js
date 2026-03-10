@@ -42,6 +42,14 @@ class MahjongUI {
             document.querySelector('.ai-right .ai-hand')
         ];
 
+        // 玩家明牌区域元素
+        this.playerExposedElement = document.getElementById('player-exposed');
+        this.aiExposedElements = [
+            document.getElementById('ai1-exposed'),
+            document.getElementById('ai3-exposed'),
+            document.getElementById('ai2-exposed')
+        ];
+
         // 已打出的牌区域元素
         this.discardedRows = [
             document.querySelector('.discarded-row.top-row'),
@@ -137,6 +145,10 @@ class MahjongUI {
 
     // 渲染玩家手牌
     renderPlayerHand(hand) {
+        // 先渲染明牌
+        this.renderExposedTiles(hand.getExposed(), this.playerExposedElement);
+
+        // 再渲染手牌
         this.playerHandElement.innerHTML = '';
         const tiles = hand.getTiles();
 
@@ -153,11 +165,37 @@ class MahjongUI {
         }
     }
 
+    // 渲染明牌（碰/杠/吃的牌组）
+    renderExposedTiles(exposed, container) {
+        if (!container) return;
+        container.innerHTML = '';
+
+        exposed.forEach(group => {
+            const groupElement = document.createElement('div');
+            groupElement.className = `exposed-group exposed-${group.type}`;
+
+            group.tiles.forEach(tile => {
+                const tileElement = this.createTileElement(tile, false);
+                tileElement.classList.add('exposed-tile');
+                groupElement.appendChild(tileElement);
+            });
+
+            container.appendChild(groupElement);
+        });
+    }
+
     // 渲染AI手牌
     renderAIHands(aiHands, showCards = false) {
         let hasTiles = false;
         aiHands.forEach((hand, index) => {
             const handElement = this.aiHandElements[index];
+            const exposedElement = this.aiExposedElements[index];
+
+            // 渲染明牌
+            if (exposedElement) {
+                this.renderExposedTiles(hand.getExposed(), exposedElement);
+            }
+
             if (handElement) {
                 handElement.innerHTML = '';
                 const tileCount = hand.getCount();

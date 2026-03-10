@@ -10,6 +10,9 @@ class GameController {
         this.ais = [];
         this.aiDifficulty = AI_DIFFICULTY.MEDIUM; // 默认难度
 
+        // 并发控制
+        this.isProcessingAction = false; // 防止快速点击打出多张牌
+
         // 配置
         this.config = {
             aiDelay: 1000,        // AI思考延迟
@@ -152,14 +155,26 @@ class GameController {
     handleTileSelected(suit, value, index) {
         console.log(`选择了牌: ${suit}${value} (索引: ${index})`);
 
+        // 如果正在处理其他操作，忽略点击（防止快速打出多张牌）
+        if (this.isProcessingAction) {
+            console.log('操作处理中，忽略点击');
+            return;
+        }
+
         // 如果不是当前玩家或有等待的操作，忽略
         if (this.game.getCurrentPlayer() !== 0 || this.game.getPendingActions().length > 0) {
             return;
         }
 
+        // 设置处理锁
+        this.isProcessingAction = true;
+
         // 执行出牌
         const discardedTile = this.game.discardTile(0, suit, value);
-        if (!discardedTile) return;
+        if (!discardedTile) {
+            this.isProcessingAction = false;
+            return;
+        }
 
         console.log(`玩家出牌: ${discardedTile.getName()}`);
         this.ui.showGameTip(`你打出了 ${discardedTile.getName()}`);
@@ -168,7 +183,10 @@ class GameController {
         this.updateUI();
 
         // 检查游戏是否结束
-        if (this.checkGameEnd()) return;
+        if (this.checkGameEnd()) {
+            this.isProcessingAction = false;
+            return;
+        }
 
         // 处理后续操作
         this.handleAfterDiscard();
@@ -196,7 +214,7 @@ class GameController {
         }, this.config.actionDelay);
     }
 
-    // 处理玩家操作（碰/杠/胡/自摸）
+    // 处理玩家操作（碰/杠/胡/自摸/吃）
     handlePlayerAction(action) {
         const pendingActions = this.game.getPendingActions();
         const actionItem = pendingActions.find(item =>
@@ -207,6 +225,13 @@ class GameController {
         if (!actionItem) return;
 
         const actualAction = actionItem.action;
+
+        // 吃牌需要选择组合
+        if (actualAction === 'chi') {
+            this.handleChiAction(actionItem);
+            return;
+        }
+
         const result = this.game.handlePendingAction(actualAction, 0, actionItem.tile);
 
         if (!result) return;
@@ -227,7 +252,94 @@ class GameController {
             setTimeout(() => {
                 this.nextPlayerTurn();
             }, this.config.actionDelay);
+        } else {
+            // 碰或杠后，释放锁让玩家可以出牌
+            this.releaseActionLock();
+            this.ui.showGameTip("请出一张牌");
         }
+    }
+
+    // 处理吃牌操作
+    handleChiAction(actionItem) {
+        const combinations = actionItem.combinations || this.game.getChiCombinations();
+
+        if (!combinations || combinations.length === 0) {
+            console.log('没有可用的吃牌组合');
+            return;
+        }
+
+        // 如果只有一个组合，直接执行
+        if (combinations.length === 1) {
+            this.executeChi(combinations[0], actionItem.tile);
+            return;
+        }
+
+        // 多个组合时，让玩家选择
+        this.showChiSelection(combinations, actionItem.tile);
+    }
+
+    // 显示吃牌选择界面
+    showChiSelection(combinations, tile) {
+        // 创建选择面板
+        const panel = document.createElement('div');
+        panel.className = 'chi-selection-panel';
+        panel.innerHTML = '<div class="chi-selection-title">选择吃牌组合</div>';
+
+        const optionsContainer = document.createElement('div');
+        optionsContainer.className = 'chi-options';
+
+        combinations.forEach((combo, index) => {
+            const option = document.createElement('div');
+            option.className = 'chi-option';
+            option.innerHTML = `
+                <div class="chi-tiles">
+                    ${combo.tiles.map(t => `<span class="chi-tile">${t.getName()}</span>`).join(' + ')}
+                    + <span class="chi-tile chi-discard">${tile.getName()}</span>
+                </div>
+            `;
+            option.addEventListener('click', () => {
+                this.executeChi(combo, tile);
+                document.body.removeChild(panel);
+            });
+            optionsContainer.appendChild(option);
+        });
+
+        panel.appendChild(optionsContainer);
+
+        // 添加取消按钮
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'chi-cancel-btn';
+        cancelBtn.textContent = '取消';
+        cancelBtn.addEventListener('click', () => {
+            document.body.removeChild(panel);
+            this.handlePass();
+        });
+        panel.appendChild(cancelBtn);
+
+        document.body.appendChild(panel);
+    }
+
+    // 执行吃牌
+    executeChi(combination, tile) {
+        const result = this.game.handlePendingAction('chi', 0, tile, combination);
+
+        if (!result) {
+            console.log('吃牌失败');
+            return;
+        }
+
+        console.log('吃牌成功');
+        this.ui.showGameTip("你吃了！");
+
+        this.game.clearPendingActions();
+        this.updateUI();
+
+        // 检查游戏是否结束
+        if (this.checkGameEnd()) return;
+
+        // 吃牌后需要出牌
+        this.releaseActionLock();
+        this.ui.showGameTip("请出一张牌");
     }
 
     // 播放操作反馈（音效和动画）
@@ -236,14 +348,16 @@ class GameController {
             'peng': 'peng',
             'gang': 'gang',
             'hu': 'hu',
-            'zimo': 'hu'
+            'zimo': 'hu',
+            'chi': 'peng' // 吃牌使用碰的音效
         };
 
         const tips = {
             'peng': "你碰了！",
             'gang': "你杠了！",
             'hu': "你胡牌了！",
-            'zimo': "你自摸胡牌！"
+            'zimo': "你自摸胡牌！",
+            'chi': "你吃了！"
         };
 
         if (sounds[action]) {
@@ -274,6 +388,11 @@ class GameController {
         }
     }
 
+    // 释放操作锁
+    releaseActionLock() {
+        this.isProcessingAction = false;
+    }
+
     // AI处理等待的操作
     handleAIPendingActions() {
         if (this.game.isGameOver()) return;
@@ -290,6 +409,8 @@ class GameController {
         // 检查是否有玩家的操作
         const playerActions = pendingActions.filter(action => action.playerIndex === 0);
         if (playerActions.length > 0) {
+            // 有玩家操作，释放锁让玩家可以操作
+            this.releaseActionLock();
             this.handlePlayerPendingActions(playerActions);
             return;
         }
@@ -472,6 +593,9 @@ class GameController {
             setTimeout(() => {
                 this.aiPlayTurn(currentPlayer);
             }, this.config.aiDelay);
+        } else {
+            // 轮到玩家，释放操作锁
+            this.releaseActionLock();
         }
     }
 
@@ -488,7 +612,8 @@ class GameController {
         if (!selfWinAction) return false;
 
         if (currentPlayer === 0) {
-            // 玩家可以自摸，显示胡按钮
+            // 玩家可以自摸，释放锁让玩家可以操作
+            this.releaseActionLock();
             this.ui.enableActions(['zimo']);
             this.ui.showGameTip("你可以自摸胡牌！");
             return true;
@@ -512,6 +637,7 @@ class GameController {
     // 检查游戏是否结束
     checkGameEnd() {
         if (this.game.isGameOver()) {
+            this.releaseActionLock();
             if (this.game.tileSet.getCount() === 0) {
                 this.ui.showGameOver("牌堆已空，游戏结束！");
             }
