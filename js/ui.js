@@ -232,11 +232,12 @@ class MahjongUI {
             document.getElementById('ai2-exposed')
         ];
 
-        // 已打出的牌区域元素
+        // 已打出的牌区域元素（4行）
         this.discardedRows = [
-            document.querySelector('.discarded-row.top-row'),
-            document.querySelector('.discarded-row.middle-row'),
-            document.querySelector('.discarded-row.bottom-row')
+            document.querySelector('.discarded-row.row-1'),
+            document.querySelector('.discarded-row.row-2'),
+            document.querySelector('.discarded-row.row-3'),
+            document.querySelector('.discarded-row.row-4')
         ];
 
         // 并发控制
@@ -338,6 +339,13 @@ class MahjongUI {
             const tileElement = this.createTileElement(tile, false, index);
             // 添加发牌动画类
             tileElement.classList.add('animated-deal');
+
+            // 如果是最后摸的牌，添加红框标记
+            const lastDrawnTile = hand.getLastDrawnTile();
+            if (lastDrawnTile && tile.suit === lastDrawnTile.suit && tile.value === lastDrawnTile.value) {
+                tileElement.classList.add('new-tile');
+            }
+
             this.playerHandElement.appendChild(tileElement);
         });
 
@@ -415,9 +423,9 @@ class MahjongUI {
         // 清空所有行
         this.discardedRows.forEach(row => row.innerHTML = '');
 
-        // 将打出的牌分配到不同的行
+        // 将打出的牌分配到 4 行
         discardedTiles.forEach((tile, index) => {
-            const rowIndex = index % 3;
+            const rowIndex = index % 4;  // 4 行
             const tileElement = this.createTileElement(tile, false);
             // 添加弃牌样式类（小尺寸）
             tileElement.classList.add('discarded-tile');
@@ -646,8 +654,13 @@ class MahjongUI {
         }
         html += '</div>';
 
-        // 添加关闭按钮
-        html += '<button class="reveal-close-btn" onclick="this.parentElement.remove()">关闭</button>';
+        // 添加按钮
+        html += `
+            <div class="reveal-buttons">
+                <button class="reveal-restart-btn" onclick="location.reload()">重新开始</button>
+                <button class="reveal-close-btn" onclick="this.parentElement.parentElement.remove()">关闭</button>
+            </div>
+        `;
 
         revealPanel.innerHTML = html;
         this.gameContainer.appendChild(revealPanel);

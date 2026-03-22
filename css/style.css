@@ -196,6 +196,11 @@ body {
     background: #f5f5dc; /* 浅米色背景，类似麻将牌本色 */
 }
 
+/* 新摸的牌黄框标记 */
+.tile.new-tile {
+    box-shadow: 0 0 0 3px #ffd700, 0 2px 6px rgba(255, 215, 0, 0.4);
+}
+
 .tile img {
     width: 100%;
     height: 100%;
@@ -824,6 +829,44 @@ body {
     font-weight: bold;
     cursor: pointer;
     transition: all 0.3s ease;
+}
+
+.reveal-close-btn:hover {
+    background: linear-gradient(145deg, #5a8c34, #4a752c);
+    transform: translateY(-2px);
+}
+
+.reveal-buttons {
+    display: flex;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.reveal-restart-btn,
+.reveal-close-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.reveal-restart-btn {
+    background: linear-gradient(145deg, #c9302c, #a02622);
+    color: white;
+}
+
+.reveal-restart-btn:hover {
+    background: linear-gradient(145deg, #e03530, #c9302c);
+    transform: translateY(-2px);
+}
+
+.reveal-close-btn {
+    background: linear-gradient(145deg, #4a752c, #3a5f22);
+    color: white;
 }
 
 .reveal-close-btn:hover {

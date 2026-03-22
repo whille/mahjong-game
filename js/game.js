@@ -233,8 +233,8 @@ class MahjongGame {
         const results = [];
         for (let i = 0; i < 4; i++) {
             if (i !== playerIndex) {
-                // 临时添加打出的牌到玩家手牌中检查是否能胡
-                this.players[i].drawTile(discardedTile);
+                // 临时添加打出的牌到玩家手牌中检查是否能胡（isTemporary=true，不标记为新牌）
+                this.players[i].drawTile(discardedTile, true);
 
                 // 点炮检查：传入 true 表示正在检查别人打出的牌
                 if (this.players[i].canWin(true)) {

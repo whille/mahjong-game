@@ -159,10 +159,16 @@ class TileSet {
 
     // 排序
     sort() {
+        // 定义花色排序顺序
+        const suitOrder = { '万': 1, '条': 2, '筒': 3, '风': 4, '箭': 5 };
+
         this.tiles.sort((a, b) => {
-            if (a.suit !== b.suit) {
-                return a.suit.localeCompare(b.suit);
+            // 先按花色排序
+            const suitDiff = (suitOrder[a.suit] || 99) - (suitOrder[b.suit] || 99);
+            if (suitDiff !== 0) {
+                return suitDiff;
             }
+            // 同花色按数值排序
             return a.value - b.value;
         });
     }
@@ -216,22 +222,42 @@ class Hand {
     constructor() {
         this.tiles = new TileSet();
         this.exposed = []; // 已碰/杠的牌组
+        this.lastDrawnTile = null; // 最后摸的牌
     }
 
     // 摸牌
-    drawTile(tile) {
+    // isTemporary: 是否是临时添加（用于检查胡牌，不记录为新牌）
+    drawTile(tile, isTemporary = false) {
         this.tiles.addTile(tile);
+        // 只有非临时添加才记录最后摸的牌
+        if (!isTemporary) {
+            this.lastDrawnTile = tile.clone();
+        }
+        // 摸牌后自动排序
+        this.sortTiles();
     }
 
     // 打牌
     discardTile(suit, value) {
         const discardedTile = this.tiles.removeTile(suit, value);
         if (discardedTile) {
+            // 打牌后清除最后摸的牌标记
+            this.lastDrawnTile = null;
             // 打牌后自动排序手牌
             this.sortTiles();
             return discardedTile;
         }
         return null; // 打牌失败
+    }
+
+    // 获取最后摸的牌
+    getLastDrawnTile() {
+        return this.lastDrawnTile;
+    }
+
+    // 清除最后摸的牌标记
+    clearLastDrawnTile() {
+        this.lastDrawnTile = null;
     }
 
     // 碰牌
@@ -251,6 +277,11 @@ class Hand {
             this.tiles.removeTile(suit, value);
             this.tiles.removeTile(suit, value);
 
+            // 碰牌后排序
+            this.sortTiles();
+            // 清除最后摸的牌标记
+            this.lastDrawnTile = null;
+
             return true;
         }
         return false;
@@ -269,6 +300,10 @@ class Hand {
                 type: 'angang',
                 tiles: gangSet.getAllTiles()
             });
+            // 杠牌后排序
+            this.sortTiles();
+            // 清除最后摸的牌标记
+            this.lastDrawnTile = null;
             return true;
         }
 
@@ -284,6 +319,10 @@ class Hand {
             this.exposed[pengIndex].type = 'minggang';
             this.exposed[pengIndex].tiles.push(new Tile(suit, value));
             this.tiles.removeTile(suit, value);
+            // 杠牌后排序
+            this.sortTiles();
+            // 清除最后摸的牌标记
+            this.lastDrawnTile = null;
             return true;
         }
 
@@ -485,6 +524,11 @@ class Hand {
         // 从手牌中移除两张牌
         this.tiles.removeTile(combination.tiles[0].suit, combination.tiles[0].value);
         this.tiles.removeTile(combination.tiles[1].suit, combination.tiles[1].value);
+
+        // 吃牌后排序
+        this.sortTiles();
+        // 清除最后摸的牌标记
+        this.lastDrawnTile = null;
 
         return true;
     }
