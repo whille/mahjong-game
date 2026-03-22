@@ -179,6 +179,9 @@ class GameController {
         console.log(`玩家出牌: ${discardedTile.getName()}`);
         this.ui.showGameTip(`你打出了 ${discardedTile.getName()}`);
 
+        // 语音播报出牌
+        this.ui.announce(discardedTile.getName(), 0);
+
         // 更新UI
         this.updateUI();
 
@@ -232,14 +235,14 @@ class GameController {
             return;
         }
 
-        const result = this.game.handlePendingAction(actualAction, 0, actionItem.tile);
+        const result = this.game.handlePendingAction(actualAction, 0, actionItem.tile, null, actionItem.gangType);
 
         if (!result) return;
 
         console.log(`操作 ${actualAction} 成功`);
 
-        // 播放音效和显示动画
-        this.playActionFeedback(actualAction);
+        // 播放音效和显示动画（玩家操作，playerIndex = 0）
+        this.playActionFeedback(actualAction, 0);
 
         this.game.clearPendingActions();
         this.updateUI();
@@ -329,6 +332,10 @@ class GameController {
         }
 
         console.log('吃牌成功');
+
+        // 播放音效和语音（玩家操作，playerIndex = 0）
+        this.playActionFeedback('chi', 0);
+
         this.ui.showGameTip("你吃了！");
 
         this.game.clearPendingActions();
@@ -342,8 +349,8 @@ class GameController {
         this.ui.showGameTip("请出一张牌");
     }
 
-    // 播放操作反馈（音效和动画）
-    playActionFeedback(action) {
+    // 播放操作反馈（音效和动画）- 玩家操作
+    playActionFeedback(action, playerIndex = 0) {
         const sounds = {
             'peng': 'peng',
             'gang': 'gang',
@@ -363,6 +370,9 @@ class GameController {
         if (sounds[action]) {
             this.ui.playSound(sounds[action]);
         }
+
+        // 语音播报操作
+        this.ui.announceAction(action, playerIndex);
 
         if (action === 'peng' || action === 'gang') {
             this.ui.showPengGangAnimation();
@@ -427,12 +437,13 @@ class GameController {
             'peng': '碰',
             'gang': '杠',
             'hu': '胡',
+            'zimo': '自摸',
             'chi': '吃'
         };
 
         const actions = playerActions.map(action => action.action);
-        const actionText = actions.map(action => actionNames[action]).join('、');
-        this.ui.showGameTip(`你可以${actionText}牌，点击相应按钮操作`);
+        const actionText = actions.map(action => actionNames[action] || action).join('、');
+        this.ui.showGameTip(`你可以${actionText}！`);
     }
 
     // 执行AI操作
@@ -442,8 +453,18 @@ class GameController {
 
         if (aiActions.length === 0) return;
 
-        // 按优先级选择操作：胡 > 杠 > 碰
-        const priorityOrder = { 'hu': 3, 'gang': 2, 'peng': 1 };
+        // 检查是否有人可以胡牌（胡牌优先级最高）
+        const huActions = aiActions.filter(action => action.action === 'hu');
+
+        if (huActions.length > 0) {
+            // 四川麻将血战到底：多人可以同时胡牌
+            // 处理所有胡牌操作
+            this.handleMultipleHuActions(huActions);
+            return;
+        }
+
+        // 没有胡牌，按优先级选择操作：杠 > 碰 > 吃
+        const priorityOrder = { 'gang': 3, 'peng': 2, 'chi': 1 };
         aiActions.sort((a, b) => (priorityOrder[b.action] || 0) - (priorityOrder[a.action] || 0));
 
         const action = aiActions[0];
@@ -464,6 +485,25 @@ class GameController {
         }
     }
 
+    // 处理多人胡牌（血战到底规则）
+    handleMultipleHuActions(huActions) {
+        // 先检查玩家是否可以胡
+        const playerHu = huActions.find(action => action.playerIndex === 0);
+
+        if (playerHu) {
+            // 玩家可以胡，让玩家决定
+            this.releaseActionLock();
+            this.handlePlayerPendingActions([playerHu]);
+            return;
+        }
+
+        // 只有 AI 可以胡，按顺序处理
+        // 在血战到底中，第一个胡牌的人决定游戏结束
+        // 这里简化处理：第一个 AI 胡
+        const firstHu = huActions[0];
+        this.performAIAction(firstHu);
+    }
+
     // AI决策
     decideAIAction(ai, hand, action) {
         switch (action.action) {
@@ -473,6 +513,8 @@ class GameController {
                 return ai.decideGang(hand, action.tile);
             case 'hu':
                 return ai.decideWin(hand, action.tile);
+            case 'chi':
+                return ai.decideChi(hand, action.tile);
             default:
                 return false;
         }
@@ -480,7 +522,18 @@ class GameController {
 
     // 执行AI操作
     performAIAction(action) {
-        const result = this.game.handlePendingAction(action.action, action.playerIndex, action.tile);
+        let result;
+
+        // 吃牌需要选择组合
+        if (action.action === 'chi') {
+            const combinations = this.game.getChiCombinations();
+            if (combinations && combinations.length > 0) {
+                // AI 选择第一个组合（简化处理）
+                result = this.game.handlePendingAction('chi', action.playerIndex, action.tile, combinations[0]);
+            }
+        } else {
+            result = this.game.handlePendingAction(action.action, action.playerIndex, action.tile);
+        }
 
         if (!result) return;
 
@@ -495,8 +548,8 @@ class GameController {
         // 检查游戏是否结束
         if (this.checkGameEnd()) return;
 
-        // 碰或杠后AI继续出牌，否则轮到下一位
-        if (action.action === 'peng' || action.action === 'gang') {
+        // 碰、杠、吃后AI继续出牌，否则轮到下一位
+        if (action.action === 'peng' || action.action === 'gang' || action.action === 'chi') {
             setTimeout(() => {
                 this.aiPlayTurn(action.playerIndex);
             }, this.config.aiDelay);
@@ -512,18 +565,23 @@ class GameController {
         const sounds = {
             'peng': 'peng',
             'gang': 'gang',
-            'hu': 'hu'
+            'hu': 'hu',
+            'chi': 'peng' // 吃牌使用碰的音效
         };
 
         const tips = {
-            'peng': `AI ${action.playerIndex} 碰了你的牌`,
-            'gang': `AI ${action.playerIndex} 杠了你的牌`,
-            'hu': `AI ${action.playerIndex} 胡了你的牌！`
+            'peng': `AI ${action.playerIndex} 碰了`,
+            'gang': `AI ${action.playerIndex} 杠了`,
+            'hu': `AI ${action.playerIndex} 胡了你的牌！`,
+            'chi': `AI ${action.playerIndex} 吃了`
         };
 
         if (sounds[action.action]) {
             this.ui.playSound(sounds[action.action]);
         }
+
+        // 语音播报AI操作（使用AI的音色，每个AI固定一个声音）
+        this.ui.announceAction(action.action, action.playerIndex);
 
         if (action.action === 'hu') {
             this.ui.showWinAnimation();
@@ -554,6 +612,10 @@ class GameController {
 
             if (discardedTile) {
                 this.ui.showGameTip(`AI ${playerIndex} 打出了 ${discardedTile.getName()}`);
+
+                // 语音播报AI出牌（使用AI的音色）
+                this.ui.announce(discardedTile.getName(), playerIndex);
+
                 this.updateUI();
 
                 if (this.checkGameEnd()) return;
@@ -568,6 +630,10 @@ class GameController {
         console.log(`AI ${playerIndex} 自摸胡牌！`);
         this.ui.playSound('win');
         this.ui.showWinAnimation();
+
+        // 语音播报自摸（使用AI的音色）
+        this.ui.announceAction('zimo', playerIndex);
+
         this.ui.showGameTip(`AI ${playerIndex} 自摸胡牌！`);
         this.game.endGame();
         this.updateUI();
@@ -638,6 +704,9 @@ class GameController {
     checkGameEnd() {
         if (this.game.isGameOver()) {
             this.releaseActionLock();
+            // 显示亮牌
+            this.ui.showAllHands(this.game);
+
             if (this.game.tileSet.getCount() === 0) {
                 this.ui.showGameOver("牌堆已空，游戏结束！");
             }

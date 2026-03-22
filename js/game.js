@@ -15,6 +15,7 @@ class MahjongGame {
         this.pendingActions = []; // 等待响应的操作
         this.isAnimating = false; // 并发控制标志
         this.chiCombinations = []; // 存储吃牌的可选组合
+        this.lastWinResult = null; // 最后胡牌结果
     }
 
     // 初始化游戏
@@ -87,25 +88,47 @@ class MahjongGame {
         this.pendingActions = [];
         this.chiCombinations = [];
 
+        // 操作优先级定义
+        const PRIORITY = { 'hu': 4, 'gang': 3, 'peng': 2, 'chi': 1 };
+
         // 检查胡牌（最高优先级）
         const winActions = this.checkWin(playerIndex, discardedTile);
-        this.pendingActions.push(...winActions);
 
         // 检查杠牌
         const gangActions = this.checkGang(playerIndex, discardedTile);
-        this.pendingActions.push(...gangActions);
 
         // 检查碰牌
         const pengActions = this.checkPeng(playerIndex, discardedTile);
-        this.pendingActions.push(...pengActions);
 
-        // 检查吃牌（只有下家可以吃，且无人碰/杠/胡时才能吃）
-        // 如果已经有胡/杠/碰的操作，则不吃
-        const hasHigherPriority = this.pendingActions.length > 0;
-        if (!hasHigherPriority) {
-            const chiActions = this.checkChi(playerIndex, discardedTile);
-            this.pendingActions.push(...chiActions);
+        // 检查吃牌（只有下家可以吃）
+        const chiActions = this.checkChi(playerIndex, discardedTile);
+
+        // 四川麻将血战到底规则：
+        // 1. 多人可胡时都可以胡
+        // 2. 如果有人胡，其他人不能碰/杠/吃
+        // 3. 如果没有人胡但有人杠/碰，则不能吃
+        // 4. 杠和碰同时存在时，优先杠
+
+        if (winActions.length > 0) {
+            // 有人可以胡，只返回胡牌操作
+            this.pendingActions = winActions;
+        } else if (gangActions.length > 0) {
+            // 没人胡但有人杠，只返回杠牌操作
+            this.pendingActions = gangActions;
+        } else if (pengActions.length > 0) {
+            // 没人胡和杠但有人碰，只返回碰牌操作
+            this.pendingActions = pengActions;
+        } else if (chiActions.length > 0) {
+            // 只有吃牌操作
+            this.pendingActions = chiActions;
         }
+
+        // 按玩家位置排序（出牌者的下家优先）
+        this.pendingActions.sort((a, b) => {
+            const aDistance = (a.playerIndex - playerIndex + 4) % 4;
+            const bDistance = (b.playerIndex - playerIndex + 4) % 4;
+            return aDistance - bDistance;
+        });
 
         // 返回等待的操作（不自动轮换玩家，由UI层处理）
         return this.pendingActions;
@@ -122,8 +145,18 @@ class MahjongGame {
                 return this.gangTile(playerIndex, tile.suit, tile.value, gangType || 'minggang');
             case 'hu':
             case 'zimo':
-                // 胡牌逻辑
-                console.log(`玩家 ${playerIndex} ${action === 'zimo' ? '自摸' : ''}胡牌！`);
+                // 计算胡牌番型
+                const isZimo = action === 'zimo';
+                const winType = this.getWinType(playerIndex, isZimo);
+                const fanResult = this.players[playerIndex].calculateWinFan(winType);
+                console.log(`玩家 ${playerIndex} ${isZimo ? '自摸' : ''}胡牌！`);
+                console.log(`番型: ${fanResult.fanTypes.map(f => f.name).join(', ')} (共${fanResult.totalFan}番)`);
+                this.lastWinResult = {
+                    playerIndex,
+                    isZimo,
+                    winType,
+                    fanResult
+                };
                 this.endGame();
                 return true;
             default:
@@ -202,7 +235,9 @@ class MahjongGame {
             if (i !== playerIndex) {
                 // 临时添加打出的牌到玩家手牌中检查是否能胡
                 this.players[i].drawTile(discardedTile);
-                if (this.players[i].canWin()) {
+
+                // 点炮检查：传入 true 表示正在检查别人打出的牌
+                if (this.players[i].canWin(true)) {
                     results.push({
                         playerIndex: i,
                         action: 'hu',
@@ -210,7 +245,7 @@ class MahjongGame {
                     });
                 }
                 // 移除临时添加的牌
-                this.players[i].discardTile(discardedTile.suit, discardedTile.value);
+                this.players[i].tiles.removeTile(discardedTile.suit, discardedTile.value);
             }
         }
         return results;
@@ -322,6 +357,28 @@ class MahjongGame {
         return this.players[playerIndex].canWin();
     }
 
+    // 检查是否是海底捞月（最后一张牌）
+    isHaiDiLaoYue() {
+        return this.tileSet.getCount() === 0;
+    }
+
+    // 获取胡牌类型
+    getWinType(playerIndex, isZimo = false) {
+        // 检查天胡（庄家起手胡）
+        if (this.discardedTiles.length === 0 && isZimo && playerIndex === this.dealer) {
+            return 'tianhu';
+        }
+        // 检查地胡（闲家第一轮胡别人打出的牌）
+        if (this.discardedTiles.length <= 4 && !isZimo && playerIndex !== this.dealer) {
+            return 'dihu';
+        }
+        // 检查海底捞月（最后一张牌胡）
+        if (this.isHaiDiLaoYue()) {
+            return 'haidilaoyue';
+        }
+        return 'normal';
+    }
+
     // 轮到下一位玩家
     nextPlayer() {
         this.currentPlayer = (this.currentPlayer + 1) % 4;
@@ -379,6 +436,62 @@ class MahjongGame {
     // 获取庄家
     getDealer() {
         return this.dealer;
+    }
+
+    // 获取最后胡牌结果
+    getLastWinResult() {
+        return this.lastWinResult;
+    }
+
+    // 获取玩家的有效听牌（考虑剩余牌数）
+    getValidTingTiles(playerIndex) {
+        const hand = this.players[playerIndex];
+        const tingTiles = hand.getTingTiles();
+
+        if (tingTiles.length === 0) return [];
+
+        // 检查每张听的牌在牌堆和其他玩家手中的剩余数量
+        const validTingTiles = tingTiles.map(tingTile => {
+            // 统计已打出的该牌数量
+            const discardedCount = this.discardedTiles.filter(
+                t => t.getId() === tingTile.id
+            ).length;
+
+            // 统计该玩家手牌中的数量（听的是自己手里的牌不可能）
+            const handCount = hand.tiles.countTile(tingTile.tile.suit, tingTile.tile.value);
+
+            // 统计其他玩家明牌中的数量
+            let exposedCount = 0;
+            for (let i = 0; i < 4; i++) {
+                if (i !== playerIndex) {
+                    const exposed = this.players[i].getExposed();
+                    exposed.forEach(group => {
+                        group.tiles.forEach(t => {
+                            if (t.getId() === tingTile.id) {
+                                exposedCount++;
+                            }
+                        });
+                    });
+                }
+            }
+
+            // 计算剩余可获得的牌数：总共4张 - 已打出 - 自己手牌 - 别人明牌
+            const remaining = 4 - discardedCount - handCount - exposedCount;
+
+            return {
+                ...tingTile,
+                remaining: remaining,
+                canWin: remaining > 0
+            };
+        });
+
+        return validTingTiles;
+    }
+
+    // 检查玩家是否听牌（至少有一张有效听的牌）
+    isPlayerTing(playerIndex) {
+        const validTingTiles = this.getValidTingTiles(playerIndex);
+        return validTingTiles.some(t => t.canWin);
     }
 
     // 获取等待的操作

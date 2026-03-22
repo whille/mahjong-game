@@ -253,6 +253,21 @@ body {
     border-radius: 3px;
 }
 
+/* 弃牌堆的牌（小尺寸，和明牌一样大） */
+.discarded-tile {
+    width: 40px;
+    height: 56px;
+    pointer-events: none;
+    cursor: default;
+}
+
+.discarded-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 3px;
+}
+
 /* 不同类型明牌的样式 */
 .exposed-peng {
     background: rgba(255, 215, 0, 0.2);
@@ -428,7 +443,7 @@ body {
 .game-tip {
     position: fixed;
     top: 20px;
-    left: 50%;
+    left: 35%;
     transform: translateX(-50%);
     background: rgba(0, 0, 0, 0.7);
     color: #fff;
@@ -666,6 +681,235 @@ body {
     transform: scale(0.98);
 }
 
+/* 吃牌选择面板 */
+.chi-selection-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.95);
+    padding: 25px 30px;
+    border-radius: 15px;
+    z-index: 1000;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    border: 2px solid rgba(255, 215, 0, 0.3);
+    min-width: 350px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* 亮牌显示面板 */
+.reveal-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(145deg, rgba(10, 92, 54, 0.98), rgba(8, 74, 44, 0.98));
+    padding: 30px 40px;
+    border-radius: 20px;
+    z-index: 1001;
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.7);
+    border: 3px solid rgba(255, 215, 0, 0.4);
+    min-width: 600px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.reveal-title {
+    font-size: 28px;
+    font-weight: bold;
+    color: gold;
+    text-align: center;
+    margin-bottom: 20px;
+    text-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+}
+
+.reveal-winner {
+    background: rgba(255, 215, 0, 0.15);
+    border-radius: 10px;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.winner-name {
+    font-size: 20px;
+    font-weight: bold;
+    color: #ffd700;
+    margin-bottom: 8px;
+}
+
+.winner-fan {
+    font-size: 16px;
+    color: #fff;
+}
+
+.fan-total {
+    color: #ffd700;
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+.reveal-hands {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.reveal-hand {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.reveal-hand.winner {
+    background: rgba(255, 215, 0, 0.1);
+    border-color: rgba(255, 215, 0, 0.3);
+}
+
+.reveal-hand-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 10px;
+}
+
+.reveal-hand-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.reveal-exposed-group {
+    display: flex;
+    gap: 2px;
+    margin-right: 10px;
+    padding: 3px 5px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+}
+
+.reveal-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 44px;
+    padding: 0 6px;
+    background: #f5f5dc;
+    color: #333;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.reveal-tile.exposed {
+    background: #ffe4b5;
+}
+
+.reveal-close-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-top: 15px;
+    background: linear-gradient(145deg, #4a752c, #3a5f22);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.reveal-close-btn:hover {
+    background: linear-gradient(145deg, #5a8c34, #4a752c);
+    transform: translateY(-2px);
+}
+
+.chi-selection-title {
+    font-size: 20px;
+    font-weight: bold;
+    color: gold;
+    text-align: center;
+    margin-bottom: 20px;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+.chi-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.chi-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 15px 20px;
+    background: linear-gradient(145deg, #2a5c3a, #1a4c2a);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.chi-option:hover {
+    background: linear-gradient(145deg, #3a7c4a, #2a6c3a);
+    transform: scale(1.02);
+    border-color: rgba(255, 215, 0, 0.5);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.chi-tiles {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 18px;
+    color: white;
+}
+
+.chi-tile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 45px;
+    height: 60px;
+    background: #f5f5dc;
+    color: #333;
+    border-radius: 5px;
+    font-size: 14px;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.chi-discard {
+    background: #ffd700;
+    color: #000;
+}
+
+.chi-cancel-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s ease;
+}
+
+.chi-cancel-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
     .tile {
@@ -676,6 +920,11 @@ body {
     .game-table {
         width: 90%;
         height: 200px;
+    }
+
+    .game-info {
+        padding: 8px 12px;
+        font-size: 14px;
     }
 
     .ai-player {
@@ -694,11 +943,11 @@ body {
     }
 
     .ai-left {
-        left: 10px;
+        left: 5px;
     }
 
     .ai-right {
-        right: 10px;
+        right: 5px;
     }
 
     .player-hand {
@@ -706,12 +955,12 @@ body {
     }
 
     .player-info, .round-info, .difficulty-info {
-        font-size: 14px;
+        font-size: 12px;
     }
 
     #difficulty-select {
-        padding: 4px 8px;
-        font-size: 12px;
+        padding: 3px 6px;
+        font-size: 11px;
     }
 
     .action-btn {
@@ -719,9 +968,72 @@ body {
         font-size: 14px;
     }
 
+    /* 调试面板移动端适配 */
+    .debug-panel {
+        width: 280px;
+        right: 10px;
+        top: 70px;
+    }
+
+    .debug-toggle-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+
+    /* 亮牌面板移动端适配 */
+    .reveal-panel {
+        min-width: auto;
+        width: 95%;
+        padding: 20px;
+    }
+
+    .reveal-hands {
+        grid-template-columns: 1fr;
+    }
+
+    .reveal-tile {
+        min-width: 28px;
+        height: 38px;
+        font-size: 10px;
+    }
+
+    /* 吃牌选择面板移动端适配 */
+    .chi-selection-panel {
+        min-width: auto;
+        width: 90%;
+        padding: 15px;
+    }
+
+    .chi-tile {
+        width: 38px;
+        height: 50px;
+        font-size: 12px;
+    }
+
+    /* 游戏结束面板移动端适配 */
+    .game-over-content {
+        padding: 30px 20px;
+        width: 90%;
+    }
+
+    .game-over-content h2 {
+        font-size: 28px;
+    }
+
+    .game-over-content p {
+        font-size: 18px;
+    }
+
     /* 在小屏幕上调整AI手牌显示 */
     .ai-hand {
-        gap: 3px;
+        gap: 2px;
+    }
+
+    .exposed-tile,
+    .discarded-tile {
+        width: 32px;
+        height: 45px;
     }
 
     /* 在极小屏幕上进一步调整 */
@@ -741,7 +1053,116 @@ body {
         }
 
         .discarded-row {
-            gap: 3px;
+            gap: 2px;
         }
+
+        .game-info {
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .player-area {
+            width: 95%;
+            bottom: 10px;
+        }
+
+        /* 隐藏难度选择在极小屏幕 */
+        .difficulty-info {
+            display: none;
+        }
+
+        .action-btn {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+    }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
+    .tile {
+        width: 45px;
+        height: 63px;
+    }
+
+    .tile:active {
+        transform: translateY(-10px) scale(1.05);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+        z-index: 3;
+    }
+
+    .tile.selected {
+        transform: translateY(-12px) scale(1.08);
+        box-shadow: 0 0 15px gold;
+    }
+
+    /* 增大触摸目标 */
+    .action-btn {
+        min-height: 48px;
+        min-width: 80px;
+    }
+
+    .debug-toggle-btn {
+        width: 48px;
+        height: 48px;
+    }
+
+    .chi-option {
+        min-height: 60px;
+    }
+
+    /* 禁用 hover 效果以避免粘滞 */
+    .tile:hover {
+        transform: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .action-btn:hover {
+        transform: none;
+    }
+}
+
+/* 横屏模式优化 */
+@media (max-width: 768px) and (orientation: landscape) {
+    .game-container {
+        overflow-x: auto;
+    }
+
+    .player-area {
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .player-exposed {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .ai-left, .ai-right {
+        top: 40%;
+    }
+
+    .game-table {
+        height: 120px;
+    }
+}
+
+/* 高分辨率屏幕优化 */
+@media (min-width: 1200px) {
+    .tile {
+        width: 55px;
+        height: 77px;
+    }
+
+    .game-table {
+        width: 700px;
+        height: 350px;
+    }
+
+    .exposed-tile,
+    .discarded-tile {
+        width: 45px;
+        height: 63px;
     }
 }

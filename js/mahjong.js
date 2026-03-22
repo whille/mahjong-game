@@ -1,12 +1,40 @@
 /**
  * 麻将核心数据结构和规则引擎
+ * 支持136张牌（万条筒 + 风牌箭牌）
  */
+
+// 花色类型
+const SUIT_TYPES = {
+    // 序数牌
+    WAN: '万',
+    TIAO: '条',
+    TONG: '筒',
+    // 风牌
+    FENG: '风',
+    // 箭牌
+    JIAN: '箭'
+};
+
+// 风牌数值
+const FENG_VALUES = {
+    DONG: 1,  // 东
+    NAN: 2,   // 南
+    XI: 3,    // 西
+    BEI: 4    // 北
+};
+
+// 箭牌数值
+const JIAN_VALUES = {
+    ZHONG: 1,  // 中（红中）
+    FA: 2,     // 发（发财）
+    BAI: 3     // 白（白板）
+};
 
 // 麻将牌类
 class Tile {
     constructor(suit, value) {
-        this.suit = suit; // 花色: '万', '条', '筒'
-        this.value = value; // 数值: 1-9
+        this.suit = suit; // 花色: '万', '条', '筒', '风', '箭'
+        this.value = value; // 数值: 1-9（序数牌）或 1-4（风牌）或 1-3（箭牌）
     }
 
     // 获取牌的唯一标识
@@ -16,14 +44,58 @@ class Tile {
 
     // 获取牌的显示名称
     getName() {
-        const suitNames = { '万': '万', '条': '条', '筒': '筒' };
-        return `${this.value}${suitNames[this.suit]}`;
+        // 序数牌
+        if (this.suit === '万') return `${this.value}万`;
+        if (this.suit === '条') return `${this.value}条`;
+        if (this.suit === '筒') return `${this.value}筒`;
+
+        // 风牌
+        if (this.suit === '风') {
+            const fengNames = { 1: '东', 2: '南', 3: '西', 4: '北' };
+            return fengNames[this.value];
+        }
+
+        // 箭牌
+        if (this.suit === '箭') {
+            const jianNames = { 1: '中', 2: '发', 3: '白' };
+            return jianNames[this.value];
+        }
+
+        return `${this.suit}${this.value}`;
     }
 
     // 获取牌的图片文件名
     getImageName() {
+        // 序数牌
         const suitMap = { '万': 'Man', '条': 'Sou', '筒': 'Pin' };
-        return `${suitMap[this.suit]}${this.value}.png`;
+        if (suitMap[this.suit]) {
+            return `${suitMap[this.suit]}${this.value}.png`;
+        }
+
+        // 风牌：东南西北
+        if (this.suit === '风') {
+            const fengMap = { 1: 'Ton', 2: 'Nan', 3: 'Shaa', 4: 'Pei' };
+            return `${fengMap[this.value]}.png`;
+        }
+
+        // 箭牌：中发白
+        if (this.suit === '箭') {
+            // 箭牌：1=中(Chun), 2=发(Hatsu), 3=白(Haku)
+            const jianMap = { 1: 'Chun', 2: 'Hatsu', 3: 'Haku' };
+            return `${jianMap[this.value]}.png`;
+        }
+
+        return 'Back.png';
+    }
+
+    // 判断是否是字牌（风牌或箭牌）
+    isZiPai() {
+        return this.suit === '风' || this.suit === '箭';
+    }
+
+    // 判断是否是序数牌
+    isXuShuPai() {
+        return ['万', '条', '筒'].includes(this.suit);
     }
 
     // 复制牌
@@ -108,11 +180,11 @@ class TileSet {
     }
 }
 
-// 创建完整牌组（简化版：只有万条筒，无风牌箭牌）
+// 创建完整牌组（136张：万条筒各1-9 + 风牌东南西北 + 箭牌中发白）
 function createCompleteTileSet() {
     const tileSet = new TileSet();
 
-    // 万、条、筒各1-9，每张4个
+    // 万、条、筒各1-9，每张4个（共108张）
     ['万', '条', '筒'].forEach(suit => {
         for (let value = 1; value <= 9; value++) {
             for (let i = 0; i < 4; i++) {
@@ -121,6 +193,21 @@ function createCompleteTileSet() {
         }
     });
 
+    // 风牌：东南西北，每张4个（共16张）
+    for (let value = 1; value <= 4; value++) {
+        for (let i = 0; i < 4; i++) {
+            tileSet.addTile(new Tile('风', value));
+        }
+    }
+
+    // 箭牌：中发白，每张4个（共12张）
+    for (let value = 1; value <= 3; value++) {
+        for (let i = 0; i < 4; i++) {
+            tileSet.addTile(new Tile('箭', value));
+        }
+    }
+
+    console.log(`创建牌组: ${tileSet.getCount()}张牌`);
     return tileSet;
 }
 
@@ -138,7 +225,13 @@ class Hand {
 
     // 打牌
     discardTile(suit, value) {
-        return this.tiles.removeTile(suit, value);
+        const discardedTile = this.tiles.removeTile(suit, value);
+        if (discardedTile) {
+            // 打牌后自动排序手牌
+            this.sortTiles();
+            return discardedTile;
+        }
+        return null; // 打牌失败
     }
 
     // 碰牌
@@ -307,13 +400,19 @@ class Hand {
         return false;
     }
 
-    // 检查是否可以吃牌（只有数字牌可以吃）
+    // 检查是否可以吃牌（只有序数牌可以吃）
     canChi(suit, value) {
-        if (!['万', '条', '筒'].includes(suit)) return false;
+        // 字牌不能吃
+        if (!this.isXuShuPai(suit)) return false;
 
         // 检查是否能与手牌组成顺子
         const combinations = this.getChiCombinations(suit, value);
         return combinations.length > 0;
+    }
+
+    // 检查花色是否是序数牌
+    isXuShuPai(suit) {
+        return ['万', '条', '筒'].includes(suit);
     }
 
     // 获取所有可能的吃牌组合
@@ -411,13 +510,34 @@ class Hand {
     }
 
     // 检查是否胡牌（简化版：平胡 + 七对）
-    canWin() {
+    // isCheckingDianPao: 是否在检查别人打出的牌（点炮检查）
+    canWin(isCheckingDianPao = false) {
         const tiles = this.tiles.getAllTiles();
-        if (tiles.length !== 14 && tiles.length !== 13) {
+        const exposedCount = this.getExposedTileCount();
+        const totalTiles = tiles.length + exposedCount;
+
+        // 胡牌时总牌数要求：
+        // - 正常状态：14 张（已摸牌）或 13 张（已出牌/听牌）
+        // - 点炮检查时：15 张（临时添加了一张牌在检查）
+        const validTotal = isCheckingDianPao
+            ? (totalTiles === 15 || totalTiles === 14)
+            : (totalTiles === 14 || totalTiles === 13);
+
+        if (!validTotal) {
             return false;
         }
 
-        // 检查七对
+        // 点炮检查时，需要移除一张牌后检查（因为临时添加了一张）
+        if (isCheckingDianPao && totalTiles === 15) {
+            return this.checkDianPao();
+        }
+
+        // 有明牌时，需要特殊处理
+        if (this.exposed.length > 0) {
+            return this.checkWinWithExposed();
+        }
+
+        // 没有明牌时，检查七对或平胡
         if (tiles.length === 14) {
             const tileCounts = {};
             tiles.forEach(tile => {
@@ -432,6 +552,75 @@ class Hand {
 
         // 简化版胡牌检查：4个面子 + 1个对子
         return checkWinSimple(tiles);
+    }
+
+    // 检查点炮胡牌（别人打出一张牌时检查）
+    checkDianPao() {
+        const tiles = this.tiles.getAllTiles();
+
+        // 统计手牌
+        const tileCounts = {};
+        tiles.forEach(tile => {
+            const id = tile.getId();
+            tileCounts[id] = (tileCounts[id] || 0) + 1;
+        });
+
+        // 寻找对子作为将牌，移除对子后检查能否组成面子
+        const counts = Object.entries(tileCounts);
+        for (let i = 0; i < counts.length; i++) {
+            const [id, count] = counts[i];
+            if (count >= 2) {
+                // 尝试以这个对子为将牌
+                const testCounts = {...tileCounts};
+                testCounts[id] -= 2;
+                if (testCounts[id] === 0) delete testCounts[id];
+
+                if (checkMelds(testCounts)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // 获取明牌数量
+    getExposedTileCount() {
+        let count = 0;
+        this.exposed.forEach(group => {
+            count += group.tiles.length;
+        });
+        return count;
+    }
+
+    // 检查带明牌的胡牌
+    checkWinWithExposed() {
+        const tiles = this.tiles.getAllTiles();
+
+        // 统计手牌
+        const tileCounts = {};
+        tiles.forEach(tile => {
+            const id = tile.getId();
+            tileCounts[id] = (tileCounts[id] || 0) + 1;
+        });
+
+        // 寻找对子作为将牌
+        const counts = Object.entries(tileCounts);
+        for (let i = 0; i < counts.length; i++) {
+            const [id, count] = counts[i];
+            if (count >= 2) {
+                // 尝试以这个对子为将牌
+                const testCounts = {...tileCounts};
+                testCounts[id] -= 2;
+                if (testCounts[id] === 0) delete testCounts[id];
+
+                if (checkMelds(testCounts)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // 计算胡牌番型
@@ -466,6 +655,51 @@ class Hand {
         });
 
         return isLongQiDui(tileCounts);
+    }
+
+    // 获取听牌列表（返回所有能胡的牌）
+    getTingTiles() {
+        const tiles = this.tiles.getAllTiles();
+        // 听牌需要手牌数为13张（等待第14张）
+        if (tiles.length !== 13) return [];
+
+        const tingTiles = [];
+
+        // 遍历所有可能的牌（包括字牌）
+        const suits = ['万', '条', '筒', '风', '箭'];
+        const maxValues = { '万': 9, '条': 9, '筒': 9, '风': 4, '箭': 3 };
+
+        suits.forEach(suit => {
+            const maxValue = maxValues[suit];
+            for (let value = 1; value <= maxValue; value++) {
+                // 模拟添加这张牌
+                const testTile = new Tile(suit, value);
+                this.tiles.addTile(testTile);
+
+                // 检查是否能胡
+                if (this.canWin()) {
+                    tingTiles.push({
+                        tile: testTile,
+                        id: testTile.getId()
+                    });
+                }
+
+                // 移除测试牌
+                this.tiles.removeTile(suit, value);
+            }
+        });
+
+        return tingTiles;
+    }
+
+    // 检查是否听牌
+    isTing() {
+        return this.getTingTiles().length > 0;
+    }
+
+    // 获取听的牌ID列表（用于快速检查）
+    getTingTileIds() {
+        return this.getTingTiles().map(t => t.id);
     }
 }
 
@@ -524,7 +758,7 @@ function checkMelds(counts) {
     const suit = firstId.charAt(0);
     const value = parseInt(firstId.slice(1));
 
-    // 尝试组成刻子（三张相同的牌）
+    // 尝试组成刻子（三张相同的牌）- 所有牌都可以
     if (firstCount >= 3) {
         const testCounts = {...nonZeroCounts};
         testCounts[firstId] -= 3;
@@ -537,7 +771,8 @@ function checkMelds(counts) {
         }
     }
 
-    // 尝试组成顺子（连续三张牌，同一花色）
+    // 尝试组成顺子（连续三张牌，同一花色）- 只有序数牌可以
+    // 字牌（风牌、箭牌）不能组成顺子
     if (['万', '条', '筒'].includes(suit) && value <= 7) {
         const next1Id = `${suit}${value + 1}`;
         const next2Id = `${suit}${value + 2}`;
@@ -568,7 +803,7 @@ function checkMelds(counts) {
 const FAN_TYPES = {
     PING_HU: { name: '平胡', fan: 1 },           // 基本胡
     DUI_DUI_HU: { name: '对对胡', fan: 2 },      // 四刻（杠）+ 一对
-    QING_YI_SE: { name: '清一色', fan: 4 },      // 只有一种花色
+    QING_YI_SE: { name: '清一色', fan: 4 },      // 只有一种花色（仅序数牌）
     QI_DUI: { name: '七对', fan: 2 },            // 七个对子
     QING_QI_DUI: { name: '清七对', fan: 8 },     // 清一色 + 七对
     LONG_QI_DUI: { name: '龙七对', fan: 4 },     // 七对中有一个杠
@@ -578,12 +813,19 @@ const FAN_TYPES = {
     DI_HU: { name: '地胡', fan: 32 },            // 闲家第一轮胡
     GANG_SHANG_KAI_HUA: { name: '杠上开花', fan: 2 }, // 杠后摸牌胡
     QIANG_GANG_HU: { name: '抢杠胡', fan: 2 },   // 抢别人的补杠
+    HAI_DI_LAO_YUE: { name: '海底捞月', fan: 1 }, // 摸最后一张牌胡
+    // 字牌相关番型
+    ZI_YI_SE: { name: '字一色', fan: 32 },       // 全部是字牌
+    DA_SI_XI: { name: '大四喜', fan: 32 },       // 东南西北四刻
+    XIAO_SI_XI: { name: '小四喜', fan: 16 },     // 东南西北三刻一对
+    DA_SAN_YUAN: { name: '大三元', fan: 16 },    // 中发白三刻
+    XIAO_SAN_YUAN: { name: '小三元', fan: 8 },   // 中发白两刻一对
     // 四川麻将特殊番型
     JIN_GOU_DIAO: { name: '金钩钓', fan: 4 },    // 单钓将
     GEN: { name: '根', fan: 1 }                  // 每一个杠算一根
 };
 
-// 检查是否是清一色
+// 检查是否是清一色（只包含一种序数牌花色）
 function isQingYiSe(tiles, exposed = []) {
     const allTiles = [...tiles];
     exposed.forEach(group => {
@@ -592,8 +834,121 @@ function isQingYiSe(tiles, exposed = []) {
 
     if (allTiles.length === 0) return false;
 
-    const suit = allTiles[0].suit;
-    return allTiles.every(tile => tile.suit === suit);
+    // 获取所有序数牌的花色
+    const xuShuSuits = allTiles
+        .filter(tile => tile.isXuShuPai && tile.isXuShuPai())
+        .map(tile => tile.suit);
+
+    // 如果没有序数牌，不是清一色
+    if (xuShuSuits.length === 0) return false;
+
+    // 如果有序数牌但包含字牌，不是清一色
+    if (xuShuSuits.length !== allTiles.length) return false;
+
+    // 检查序数牌是否都是同一花色
+    const suit = xuShuSuits[0];
+    return xuShuSuits.every(s => s === suit);
+}
+
+// 检查是否是字一色（全部是字牌）
+function isZiYiSe(tiles, exposed = []) {
+    const allTiles = [...tiles];
+    exposed.forEach(group => {
+        group.tiles.forEach(tile => allTiles.push(tile));
+    });
+
+    if (allTiles.length === 0) return false;
+    return allTiles.every(tile => tile.isZiPai && tile.isZiPai());
+}
+
+// 检查是否是大四喜（东南西北四刻）
+function isDaSiXi(tileCounts, exposed = []) {
+    const fengPai = ['风1', '风2', '风3', '风4']; // 东南西北
+
+    // 检查明牌中的风牌刻子
+    const exposedFeng = exposed.filter(g =>
+        g.type !== 'chi' && g.tiles[0] && g.tiles[0].suit === '风'
+    ).map(g => g.tiles[0].getId());
+
+    let fengKanCount = exposedFeng.length;
+
+    // 检查手牌中的风牌刻子
+    fengPai.forEach(id => {
+        if (tileCounts[id] >= 3) {
+            fengKanCount++;
+        }
+    });
+
+    return fengKanCount >= 4;
+}
+
+// 检查是否是小四喜（东南西北三刻一对）
+function isXiaoSiXi(tileCounts, exposed = []) {
+    const fengPai = ['风1', '风2', '风3', '风4'];
+
+    // 检查明牌中的风牌刻子
+    const exposedFeng = exposed.filter(g =>
+        g.type !== 'chi' && g.tiles[0] && g.tiles[0].suit === '风'
+    ).map(g => g.tiles[0].getId());
+
+    let fengKanCount = exposedFeng.length;
+    let fengPairCount = 0;
+
+    // 检查手牌
+    fengPai.forEach(id => {
+        if (tileCounts[id] >= 3) {
+            fengKanCount++;
+        } else if (tileCounts[id] === 2 && !exposedFeng.includes(id)) {
+            fengPairCount++;
+        }
+    });
+
+    return fengKanCount >= 3 && fengPairCount >= 1;
+}
+
+// 检查是否是大三元（中发白三刻）
+function isDaSanYuan(tileCounts, exposed = []) {
+    const jianPai = ['箭1', '箭2', '箭3']; // 中发白
+
+    // 检查明牌中的箭牌刻子
+    const exposedJian = exposed.filter(g =>
+        g.type !== 'chi' && g.tiles[0] && g.tiles[0].suit === '箭'
+    ).map(g => g.tiles[0].getId());
+
+    let jianKanCount = exposedJian.length;
+
+    // 检查手牌中的箭牌刻子
+    jianPai.forEach(id => {
+        if (tileCounts[id] >= 3) {
+            jianKanCount++;
+        }
+    });
+
+    return jianKanCount >= 3;
+}
+
+// 检查是否是小三元（中发白两刻一对）
+function isXiaoSanYuan(tileCounts, exposed = []) {
+    const jianPai = ['箭1', '箭2', '箭3'];
+
+    // 检查明牌中的箭牌刻子
+    const exposedJian = exposed.filter(g =>
+        g.type !== 'chi' && g.tiles[0] && g.tiles[0].suit === '箭'
+    ).map(g => g.tiles[0].getId());
+
+    let jianKanCount = exposedJian.length;
+    let jianPairCount = 0;
+
+    // 检查手牌
+    jianPai.forEach(id => {
+        if (tileCounts[id] >= 3) {
+            jianKanCount++;
+        } else if (tileCounts[id] === 2 && !exposedJian.includes(id)) {
+            jianPairCount++;
+        }
+    });
+
+    return jianKanCount >= 2 && jianPairCount >= 1;
 }
 
 // 检查是否是对对胡（全部是刻子/杠子，没有顺子）
@@ -662,20 +1017,58 @@ function calculateFan(tiles, exposed = [], winType = 'normal') {
         tileCounts[id] = (tileCounts[id] || 0) + 1;
     });
 
+    // 检查字牌特殊番型（优先级最高）
+    const isZiYiSeResult = isZiYiSe(tiles, exposed);
+    const isDaSiXiResult = isDaSiXi(tileCounts, exposed);
+    const isXiaoSiXiResult = isXiaoSiXi(tileCounts, exposed);
+    const isDaSanYuanResult = isDaSanYuan(tileCounts, exposed);
+    const isXiaoSanYuanResult = isXiaoSanYuan(tileCounts, exposed);
+
+    // 字一色（32番）
+    if (isZiYiSeResult) {
+        fanResults.push(FAN_TYPES.ZI_YI_SE);
+        totalFan += FAN_TYPES.ZI_YI_SE.fan;
+    }
+
+    // 大四喜（32番）
+    if (isDaSiXiResult) {
+        fanResults.push(FAN_TYPES.DA_SI_XI);
+        totalFan += FAN_TYPES.DA_SI_XI.fan;
+    }
+
+    // 小四喜（16番）
+    if (!isDaSiXiResult && isXiaoSiXiResult) {
+        fanResults.push(FAN_TYPES.XIAO_SI_XI);
+        totalFan += FAN_TYPES.XIAO_SI_XI.fan;
+    }
+
+    // 大三元（16番）
+    if (isDaSanYuanResult) {
+        fanResults.push(FAN_TYPES.DA_SAN_YUAN);
+        totalFan += FAN_TYPES.DA_SAN_YUAN.fan;
+    }
+
+    // 小三元（8番）
+    if (!isDaSanYuanResult && isXiaoSanYuanResult) {
+        fanResults.push(FAN_TYPES.XIAO_SAN_YUAN);
+        totalFan += FAN_TYPES.XIAO_SAN_YUAN.fan;
+    }
+
+    // 检查序数牌番型
     const isQing = isQingYiSe(tiles, exposed);
     const isQiDuiResult = isQiDui(tileCounts);
     const isLongQiDuiResult = isLongQiDui(tileCounts);
     const isDuiDuiResult = isDuiDuiHu(tileCounts);
 
-    // 检查清一色
-    if (isQing) {
+    // 检查清一色（只有序数牌时才检查）
+    if (isQing && !isZiYiSeResult) {
         fanResults.push(FAN_TYPES.QING_YI_SE);
         totalFan += FAN_TYPES.QING_YI_SE.fan;
     }
 
     // 检查七对/龙七对
     if (isLongQiDuiResult) {
-        if (isQing) {
+        if (isQing && !isZiYiSeResult) {
             fanResults.push(FAN_TYPES.QING_LONG_QI_DUI);
             totalFan += FAN_TYPES.QING_LONG_QI_DUI.fan;
         } else {
@@ -683,14 +1076,15 @@ function calculateFan(tiles, exposed = [], winType = 'normal') {
             totalFan += FAN_TYPES.LONG_QI_DUI.fan;
         }
     } else if (isQiDuiResult) {
-        if (isQing) {
+        if (isQing && !isZiYiSeResult) {
             fanResults.push(FAN_TYPES.QING_QI_DUI);
             totalFan += FAN_TYPES.QING_QI_DUI.fan;
         } else {
             fanResults.push(FAN_TYPES.QI_DUI);
             totalFan += FAN_TYPES.QI_DUI.fan;
         }
-    } else if (isDuiDuiResult) {
+    } else if (isDuiDuiResult && !isZiYiSeResult) {
+        // 对对胡（字一色不额外加对对胡）
         if (isQing) {
             fanResults.push(FAN_TYPES.SHI_BA_XUE_SHI);
             totalFan += FAN_TYPES.SHI_BA_XUE_SHI.fan;
@@ -698,8 +1092,8 @@ function calculateFan(tiles, exposed = [], winType = 'normal') {
             fanResults.push(FAN_TYPES.DUI_DUI_HU);
             totalFan += FAN_TYPES.DUI_DUI_HU.fan;
         }
-    } else {
-        // 平胡
+    } else if (!isZiYiSeResult && fanResults.length === 0) {
+        // 平胡（字一色不加平胡）
         fanResults.push(FAN_TYPES.PING_HU);
         totalFan += FAN_TYPES.PING_HU.fan;
     }
@@ -731,6 +1125,10 @@ function calculateFan(tiles, exposed = [], winType = 'normal') {
     } else if (winType === 'dihu') {
         fanResults.push(FAN_TYPES.DI_HU);
         totalFan += FAN_TYPES.DI_HU.fan;
+    } else if (winType === 'haidilaoyue') {
+        // 海底捞月：摸最后一张牌胡
+        fanResults.push(FAN_TYPES.HAI_DI_LAO_YUE);
+        totalFan += FAN_TYPES.HAI_DI_LAO_YUE.fan;
     }
 
     return {
@@ -775,3 +1173,10 @@ window.isQingYiSe = isQingYiSe;
 window.isDuiDuiHu = isDuiDuiHu;
 window.isQiDui = isQiDui;
 window.isLongQiDui = isLongQiDui;
+// 字牌相关番型
+window.isZiYiSe = isZiYiSe;
+window.isDaSiXi = isDaSiXi;
+window.isXiaoSiXi = isXiaoSiXi;
+window.isDaSanYuan = isDaSanYuan;
+window.isXiaoSanYuan = isXiaoSanYuan;
+window.SUIT_TYPES = SUIT_TYPES;

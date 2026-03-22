@@ -18,6 +18,8 @@ class MahjongAI {
         this.knownDiscards = [];
         // 记录其他玩家可能的牌
         this.inferredTiles = {};
+        // 当前听的牌
+        this.tingTiles = [];
     }
 
     // 设置难度
@@ -28,6 +30,38 @@ class MahjongAI {
     // 获取难度
     getDifficulty() {
         return this.difficulty;
+    }
+
+    // 更新听的牌列表
+    updateTingTiles(hand, game) {
+        if (game && typeof game.getValidTingTiles === 'function') {
+            this.tingTiles = game.getValidTingTiles(this.playerIndex);
+        } else {
+            this.tingTiles = hand.getTingTiles();
+        }
+    }
+
+    // 检查是否听牌
+    isTing() {
+        return this.tingTiles.length > 0;
+    }
+
+    // 获取听的牌列表
+    getTingTiles() {
+        return this.tingTiles;
+    }
+
+    // 检查打出的牌是否会影响听牌
+    wouldBreakTing(tile, hand) {
+        if (!this.isTing()) return false;
+
+        // 模拟打出这张牌后检查是否还听牌
+        const originalTiles = hand.getTiles();
+        hand.tiles.removeTile(tile.suit, tile.value);
+        const stillTing = hand.isTing();
+        hand.tiles.addTile(tile);
+
+        return !stillTing;
     }
 
     // 记录打出的牌
@@ -80,6 +114,16 @@ class MahjongAI {
         // 统计每张牌的数量
         const tileCounts = this.getTileCounts(tiles);
 
+        // 如果听牌了，保持听牌状态优先
+        if (this.isTing()) {
+            // 找到不会破坏听牌的牌
+            const safeTiles = tiles.filter(tile => !this.wouldBreakTing(tile, hand));
+            if (safeTiles.length > 0) {
+                // 从安全的牌中随机选一张
+                return safeTiles[Math.floor(Math.random() * safeTiles.length)];
+            }
+        }
+
         // 评估每张牌的价值
         const tileValues = tiles.map(tile => ({
             tile: tile,
@@ -97,6 +141,21 @@ class MahjongAI {
     // 困难难度：高级策略
     decideDiscardHard(tiles, hand) {
         const tileCounts = this.getTileCounts(tiles);
+
+        // 如果听牌了，保持听牌状态优先
+        if (this.isTing()) {
+            // 找到不会破坏听牌的牌
+            const safeTiles = tiles.filter(tile => !this.wouldBreakTing(tile, hand));
+            if (safeTiles.length > 0) {
+                // 从安全的牌中选择价值最低的
+                const tileValues = safeTiles.map(tile => ({
+                    tile: tile,
+                    value: this.evaluateTileValue(tile, tileCounts, hand)
+                }));
+                tileValues.sort((a, b) => a.value - b.value);
+                return tileValues[0].tile;
+            }
+        }
 
         // 计算每种牌型的完整性得分
         const analysis = this.analyzeHand(tiles, tileCounts);
@@ -132,6 +191,18 @@ class MahjongAI {
         const suit = tile.suit;
         const value_num = tile.value;
 
+        // 字牌价值评估
+        if (tile.isZiPai && tile.isZiPai()) {
+            // 字牌数量加成
+            const count = tileCounts[tile.getId()] || 0;
+            if (count >= 3) value += 35; // 刻子很有价值
+            else if (count >= 2) value += 25; // 对子也有价值
+            else value += 5; // 单张字牌价值较低
+
+            return value;
+        }
+
+        // 序数牌价值评估
         // 数量加成：对子和刻子更有价值
         const count = tileCounts[tile.getId()] || 0;
         if (count >= 3) value += 30;
@@ -467,6 +538,10 @@ class MahjongAI {
     // AI执行出牌
     playDiscard(game) {
         const hand = game.players[this.playerIndex];
+
+        // 更新听牌状态
+        this.updateTingTiles(hand, game);
+
         const tileToDiscard = this.decideDiscard(hand);
 
         if (tileToDiscard) {

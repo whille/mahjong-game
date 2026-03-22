@@ -2,6 +2,185 @@
  * 麻将游戏UI渲染
  */
 
+// 语音播报管理器（支持多音色）
+class VoiceAnnouncer {
+    constructor() {
+        this.enabled = true;
+        this.synth = window.speechSynthesis;
+        this.lang = 'zh-CN';
+        this.voices = [];
+        this.voicesLoaded = false;
+
+        // 不同玩家的音色配置
+        this.playerConfigs = {
+            0: { name: '你', gender: 'male' },        // 玩家（男声）
+            1: { name: 'AI 1', gender: 'female' },    // AI 1（女声）
+            2: { name: 'AI 2', gender: 'male' },      // AI 2（男声）
+            3: { name: 'AI 3', gender: 'female' }     // AI 3（女声）
+        };
+
+        // 预定义的播报文本
+        this.announcements = {
+            peng: '碰',
+            gang: '杠',
+            hu: '胡',
+            chi: '吃',
+            zimo: '自摸',
+            tianhu: '天胡',
+            dihu: '地胡',
+            haidilaoyue: '海底捞月',
+            gameStart: '游戏开始',
+            gameOver: '游戏结束',
+            yourTurn: '轮到你出牌',
+            wait: '等待',
+            discard: '打'
+        };
+
+        // 加载可用语音
+        this.loadVoices();
+    }
+
+    // 加载系统可用语音
+    loadVoices() {
+        // 某些浏览器需要异步加载语音列表
+        const loadVoiceList = () => {
+            this.voices = this.synth.getVoices();
+            if (this.voices.length > 0) {
+                this.voicesLoaded = true;
+                this.assignPlayerVoices();
+                console.log(`已加载 ${this.voices.length} 个语音`);
+            }
+        };
+
+        // 立即尝试加载
+        loadVoiceList();
+
+        // 监听语音列表变化（某些浏览器需要）
+        if (this.synth.onvoiceschanged !== undefined) {
+            this.synth.onvoiceschanged = loadVoiceList;
+        }
+    }
+
+    // 为玩家分配语音
+    assignPlayerVoices() {
+        // 获取中文语音
+        const chineseVoices = this.voices.filter(v =>
+            v.lang.includes('zh') || v.lang.includes('CN')
+        );
+
+        // 尝试找到男声和女声
+        // 常见的中文语音关键词
+        const femaleKeywords = ['female', '女', 'xiaoxiao', 'tingting', 'yaoyao', 'xiaoyan'];
+        const maleKeywords = ['male', '男', 'kangkang', 'zhipeng', 'xiaofeng'];
+
+        const femaleVoices = chineseVoices.filter(v =>
+            femaleKeywords.some(k => v.name.toLowerCase().includes(k))
+        );
+
+        const maleVoices = chineseVoices.filter(v =>
+            maleKeywords.some(k => v.name.toLowerCase().includes(k))
+        );
+
+        // 按 playerConfigs 的性别配置分配语音
+        // 玩家 0: 男, AI 1: 女, AI 2: 男, AI 3: 女
+        this.playerVoices = {
+            0: maleVoices[0] || chineseVoices[0] || this.voices[0],    // 玩家 - 男声
+            1: femaleVoices[0] || chineseVoices[1] || this.voices[1],  // AI 1 - 女声
+            2: maleVoices[1] || maleVoices[0] || chineseVoices[2] || this.voices[2], // AI 2 - 男声
+            3: femaleVoices[1] || femaleVoices[0] || chineseVoices[3] || this.voices[3] // AI 3 - 女声
+        };
+
+        // 打印分配结果
+        for (let i = 0; i < 4; i++) {
+            const voice = this.playerVoices[i];
+            if (voice) {
+                const gender = this.playerConfigs[i].gender === 'male' ? '男' : '女';
+                console.log(`玩家 ${i} (${gender}): ${voice.name}`);
+            }
+        }
+    }
+
+    // 设置是否启用
+    setEnabled(enabled) {
+        this.enabled = enabled;
+    }
+
+    // 获取是否启用
+    isEnabled() {
+        return this.enabled;
+    }
+
+    // 播报文本（指定玩家）
+    speak(text, playerIndex = 0) {
+        if (!this.enabled || !this.synth) return;
+
+        // 取消之前的播报
+        this.synth.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = this.lang;
+
+        // 设置指定玩家的语音
+        if (this.playerVoices && this.playerVoices[playerIndex]) {
+            utterance.voice = this.playerVoices[playerIndex];
+        }
+
+        // 根据性别调整音调（女声高，男声低）
+        const config = this.playerConfigs[playerIndex];
+        if (config.gender === 'female') {
+            utterance.pitch = 1.1;  // 女声稍高
+            utterance.rate = 1.0;
+        } else {
+            utterance.pitch = 0.9;  // 男声稍低
+            utterance.rate = 0.95;
+        }
+        utterance.volume = 1.0;
+
+        this.synth.speak(utterance);
+    }
+
+    // 播报操作（指定玩家）
+    announceAction(action, playerIndex = 0) {
+        const text = this.announcements[action];
+        if (text) {
+            this.speak(text, playerIndex);
+        }
+    }
+
+    // 播报出牌（包含牌名）
+    announceDiscard(tileName, playerIndex = 0) {
+        if (!this.enabled || !this.synth) return;
+        this.speak(tileName, playerIndex);
+    }
+
+    // 播报摸牌
+    announceDraw(playerIndex = 0) {
+        if (playerIndex === 0) {
+            this.speak('摸牌', playerIndex);
+        }
+    }
+
+    // 播报自定义文本
+    announce(text, playerIndex = 0) {
+        this.speak(text, playerIndex);
+    }
+
+    // 获取玩家名称
+    getPlayerName(playerIndex) {
+        const config = this.playerConfigs[playerIndex];
+        return config ? config.name : `玩家${playerIndex + 1}`;
+    }
+
+    // 获取可用语音列表（调试用）
+    getAvailableVoices() {
+        return this.voices.map(v => ({
+            name: v.name,
+            lang: v.lang,
+            voiceURI: v.voiceURI
+        }));
+    }
+}
+
 class MahjongUI {
     constructor() {
         this.gameContainer = document.querySelector('.game-container');
@@ -14,6 +193,9 @@ class MahjongUI {
         this.passBtn = document.getElementById('pass-btn');
         this.chiBtn = document.getElementById('chi-btn'); // 吃牌按钮
         this.difficultySelect = document.getElementById('difficulty-select');
+
+        // 初始化语音播报
+        this.voiceAnnouncer = new VoiceAnnouncer();
 
         // 调试面板元素
         this.debugPanel = document.getElementById('debug-panel');
@@ -237,7 +419,8 @@ class MahjongUI {
         discardedTiles.forEach((tile, index) => {
             const rowIndex = index % 3;
             const tileElement = this.createTileElement(tile, false);
-            // 添加打出牌的动画类
+            // 添加弃牌样式类（小尺寸）
+            tileElement.classList.add('discarded-tile');
             tileElement.classList.add('animated-discard');
             this.discardedRows[rowIndex].appendChild(tileElement);
         });
@@ -405,7 +588,75 @@ class MahjongUI {
         this.gameContainer.appendChild(gameOverElement);
     }
 
-    // 播放音效
+    // 亮牌显示系统 - 显示所有玩家手牌和番型
+    showAllHands(game) {
+        // 创建亮牌面板
+        const revealPanel = document.createElement('div');
+        revealPanel.className = 'reveal-panel';
+
+        let html = '<div class="reveal-title">胡牌结果</div>';
+
+        // 显示胡牌玩家信息
+        const winResult = game.getLastWinResult();
+        if (winResult) {
+            const player = winResult.playerIndex;
+            const isZimo = winResult.isZimo;
+            const fanResult = winResult.fanResult;
+
+            html += `
+                <div class="reveal-winner">
+                    <div class="winner-name">玩家 ${player + 1} ${isZimo ? '自摸' : '胡牌'}</div>
+                    <div class="winner-fan">
+                        ${fanResult.fanTypes.map(f => f.name).join('、')}
+                        <span class="fan-total">共 ${fanResult.totalFan} 番</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 显示所有玩家手牌
+        html += '<div class="reveal-hands">';
+        for (let i = 0; i < 4; i++) {
+            const hand = game.players[i];
+            const tiles = hand.getTiles();
+            const exposed = hand.getExposed();
+            const isWinner = winResult && winResult.playerIndex === i;
+
+            html += `
+                <div class="reveal-hand ${isWinner ? 'winner' : ''}">
+                    <div class="reveal-hand-title">玩家 ${i + 1} ${i === 0 ? '(你)' : ''} ${isWinner ? '🏆' : ''}</div>
+                    <div class="reveal-hand-tiles">
+            `;
+
+            // 显示明牌
+            exposed.forEach(group => {
+                html += '<div class="reveal-exposed-group">';
+                group.tiles.forEach(tile => {
+                    html += `<div class="reveal-tile exposed">${tile.getName()}</div>`;
+                });
+                html += '</div>';
+            });
+
+            // 显示手牌
+            tiles.forEach(tile => {
+                html += `<div class="reveal-tile">${tile.getName()}</div>`;
+            });
+
+            html += '</div></div>';
+        }
+        html += '</div>';
+
+        // 添加关闭按钮
+        html += '<button class="reveal-close-btn" onclick="this.parentElement.remove()">关闭</button>';
+
+        revealPanel.innerHTML = html;
+        this.gameContainer.appendChild(revealPanel);
+
+        // 语音播报
+        this.announce('游戏结束');
+    }
+
+    // 播放音效（不包含语音播报，语音播报在 controller 中处理）
     playSound(soundType) {
         let sound = null;
         switch(soundType) {
@@ -442,6 +693,26 @@ class MahjongUI {
                 }
             });
         }
+    }
+
+    // 设置语音播报开关
+    setVoiceEnabled(enabled) {
+        this.voiceAnnouncer.setEnabled(enabled);
+    }
+
+    // 获取语音播报状态
+    isVoiceEnabled() {
+        return this.voiceAnnouncer.isEnabled();
+    }
+
+    // 语音播报
+    announce(text, playerIndex = 0) {
+        this.voiceAnnouncer.announce(text, playerIndex);
+    }
+
+    // 语音播报操作
+    announceAction(action, playerIndex = 0) {
+        this.voiceAnnouncer.announceAction(action, playerIndex);
     }
 
     // 显示碰/杠动画
@@ -602,5 +873,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.mahjongUI = new MahjongUI();
 });
 
-// 导出UI类
+// 导出UI类和语音播报类
 window.MahjongUI = MahjongUI;
+window.VoiceAnnouncer = VoiceAnnouncer;
